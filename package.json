@@ -1,6 +1,6 @@
 {
   "name": "ascension-infinite-servidor",
-  "version": "0.9.3",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Servidor oficial do Ascension Infinite (jogo + WebSocket /ws). Sem dependências.",

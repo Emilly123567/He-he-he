@@ -324,9 +324,9 @@ var BigNum = class _BigNum {
       return new _BigNum(n < 0 ? -1 : 1, a / POW10[e2], e2);
     }
     const str = n.toExponential();
-    const idx = str.indexOf("e");
-    const m = Number(str.slice(0, idx));
-    const e = Number(str.slice(idx + 1));
+    const idx2 = str.indexOf("e");
+    const m = Number(str.slice(0, idx2));
+    const e = Number(str.slice(idx2 + 1));
     return _BigNum.normalize(m < 0 ? -1 : 1, Math.abs(m), e, "fromNumber");
   }
   /** 10^log, com sinal. */
@@ -689,10 +689,10 @@ function tryParse(input) {
   const m = ABBR_RE.exec(str);
   if (!m || m[1] === void 0 || m[2] === void 0) return null;
   const base = parseScientific(m[1].replace(",", "."));
-  const idx = registry.indexFor(m[2]);
-  if (!base || idx === null) return null;
+  const idx2 = registry.indexFor(m[2]);
+  if (!base || idx2 === null) return null;
   if (base.sign === 0) return BigNum.ZERO;
-  return BigNum.normalize(sign * base.sign, base.mantissa, base.exponent + 3 * (idx + 1), "parse");
+  return BigNum.normalize(sign * base.sign, base.mantissa, base.exponent + 3 * (idx2 + 1), "parse");
 }
 function parse(input) {
   const r = tryParse(input);
@@ -1161,6 +1161,15 @@ var LEVEL_CONFIG = {
   baseHp: "100",
   baseResistance: "1"
 };
+var LEVEL_EFFECTS = {
+  allGainPercentPerLevel: "0.00000000001",
+  /** additive: 1 + n·p · compound: (1 + p)^n */
+  allGainMode: "additive",
+  letterCycleReductionSeconds: 0.2,
+  letterCycleReductionPerLevel: 0.1,
+  /** O ciclo nunca fica abaixo disto (o mesmo passo de 0,2 s). [PROPOSTO] */
+  minLetterCycleSeconds: 0.2
+};
 var LETTERS_CONFIG = {
   cycleSeconds: 20,
   baseAmountPerCycle: "1",
@@ -1195,7 +1204,8 @@ var RESET_LAYERS = {
   rank: {
     id: "rank",
     displayName: "Rank",
-    requirements: [{ resource: "multiplier", base: "1e3", growth: "15", costMode: "cumulative" }],
+    // requisito inicial 780 Multiplicadores (revisado pelo autor; antes 1e3). Crescimento e recompensas iguais.
+    requirements: [{ resource: "multiplier", base: "780", growth: "15", costMode: "cumulative" }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "10", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "2", stacking: add2 }
@@ -1255,9 +1265,12 @@ var RESET_LAYERS = {
     displayName: "Ultra Prest\xEDgio",
     requirements: [
       // 1T = 1e12 (revisado pelo autor; antes 1 Vg). [DECISÃO D8] o nível é um limiar (não é consumido).
-      { resource: "level", base: "1e12", growth: "70", costMode: "threshold" },
-      { resource: "prestige", base: "5", growth: "70", costMode: "cumulative" }
+      // crescimento aleatório de 70x a 95x por unidade (revisado pelo autor; antes 70x fixo)
+      { resource: "level", base: "1e12", growth: "70", costMode: "threshold", growthRange: { min: 70, max: 95 } },
+      { resource: "prestige", base: "5", growth: "70", costMode: "cumulative", growthRange: { min: 70, max: 95 } }
     ],
+    // após o 1º Ultra Prestígio, todos os multiplicadores dele são elevados ao quadrado (autor)
+    rewardPowerAfterFirst: 2,
     rewards: [
       { channel: "letterGain", amountPerUnit: "3.56e6", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "967e3", stacking: add2 },
@@ -1364,8 +1377,16 @@ var MULTIPLAYER_CONFIG = {
   leaderboardRanking: "magnitude",
   leaderboardRefreshMs: 3e4,
   // [PROPOSTO]
-  reconnectBackoffMs: [1e3, 2e3, 5e3, 1e4, 3e4]
+  reconnectBackoffMs: [1e3, 2e3, 5e3, 1e4, 3e4],
   // [PROPOSTO]
+  /**
+   * Servidor oficial (Render). Usado quando o jogo é aberto como ARQUIVO (o HTML
+   * único) ou hospedado em outro lugar; quando a página vem do próprio servidor,
+   * a conexão é com ele mesmo.
+   */
+  officialServer: "https://he-he-he-j548.onrender.com",
+  /** Plano gratuito do Render "dorme": tempo máximo esperando ele acordar ao apertar START. */
+  wakeTimeoutMs: 75e3
 };
 var BOT_CONFIG = {
   totalBots: 100,
@@ -1458,7 +1479,7 @@ function raritiesOf(kind) {
   return kind === "item" ? ITEM_RARITIES : CARD_RARITIES;
 }
 function dropWeights(kind, flight) {
-  const boost = 1 + 0.3 * Math.max(0, flight);
+  const boost = 1 + (kind === "card" ? 0.2 : 0.15) * Math.max(0, flight);
   return raritiesOf(kind).map((r) => r.weight * Math.pow(boost, r.tier));
 }
 function pickRarity(kind, flight, u, minTier = 0) {
@@ -2269,6 +2290,25 @@ function randomAppearance(rand = Math.random, name = "Ascendente") {
 // src/multiplayer/Protocol.ts
 var PROTOCOL_VERSION = 1;
 var MAX_MESSAGE_BYTES = 256 * 1024;
+var CHAT_COLORS = [
+  "#ff6b6b",
+  "#ffa94d",
+  "#ffd43b",
+  "#a9e34b",
+  "#51cf66",
+  "#20c997",
+  "#3bc9db",
+  "#4dabf7",
+  "#748ffc",
+  "#9775fa",
+  "#da77f2",
+  "#f783ac",
+  "#ffffff",
+  "#e8c39e",
+  "#94d82d"
+];
+var CHAT_MAX_CHARS = 160;
+var CHAT_HISTORY = 40;
 var ANIMS2 = ["idle", "walk", "run", "air"];
 var LAYERS = ["multiplier", "rank", "rebirth", "ultraRebirth", "prestige", "ultraPrestige"];
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -2320,6 +2360,8 @@ function parseClientMessage(text) {
       return { t: m.t };
     case "ping":
       return isNum(m.ct) ? { t: "ping", ct: m.ct } : null;
+    case "chat":
+      return isStr(m.text, CHAT_MAX_CHARS * 4) && isStr(m.nonce, 40) ? { t: "chat", text: m.text, nonce: m.nonce } : null;
     case "join":
       if (!isInt(m.v, 0, 1e6) || !isStr(m.name, 64)) return null;
       if (m.token !== null && !(isStr(m.token, 128) && /^[a-f0-9]{32,128}$/.test(m.token))) return null;
@@ -2355,57 +2397,9 @@ function packPos(p, yaw, a) {
   const r = (v) => Math.round(v * 1e3) / 1e3;
   return [p.seg, r(p.x), r(p.y), r(p.s), Math.round(yaw * 100) / 100, a];
 }
-
-// src/multiplayer/RoomManager.ts
-var RoomManager = class {
-  rooms = /* @__PURE__ */ new Map();
-  where = /* @__PURE__ */ new Map();
-  next = 1;
-  capacity;
-  constructor(capacity = MULTIPLAYER_CONFIG.maxRealPlayersPerRoom) {
-    this.capacity = capacity;
-  }
-  /** Coloca o jogador numa sala (ou mantém a atual). */
-  assign(playerId) {
-    const cur = this.roomOf(playerId);
-    if (cur) return cur;
-    let best = null;
-    for (const r of this.rooms.values()) {
-      if (r.players.size >= this.capacity) continue;
-      if (!best || r.players.size > best.players.size) best = r;
-    }
-    if (!best) {
-      best = { id: `sala-${this.next++}`, players: /* @__PURE__ */ new Set(), botSlots: BOT_CONFIG.physicalBotsPerRoom };
-      this.rooms.set(best.id, best);
-    }
-    best.players.add(playerId);
-    this.where.set(playerId, best.id);
-    return best;
-  }
-  remove(playerId) {
-    const r = this.roomOf(playerId);
-    if (!r) return null;
-    r.players.delete(playerId);
-    this.where.delete(playerId);
-    if (r.players.size === 0) this.rooms.delete(r.id);
-    return r;
-  }
-  roomOf(playerId) {
-    const id = this.where.get(playerId);
-    return id ? this.rooms.get(id) ?? null : null;
-  }
-  /** Outros jogadores da mesma sala. */
-  mates(playerId) {
-    const r = this.roomOf(playerId);
-    return r ? [...r.players].filter((p) => p !== playerId) : [];
-  }
-  all() {
-    return [...this.rooms.values()];
-  }
-  get playerCount() {
-    return this.where.size;
-  }
-};
+function cleanChatText(raw) {
+  return raw.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim().slice(0, CHAT_MAX_CHARS);
+}
 
 // src/multiplayer/LeaderboardRanking.ts
 function compareEntries(a, b, mode = MULTIPLAYER_CONFIG.leaderboardRanking) {
@@ -2518,6 +2512,57 @@ var LeaderboardService = class {
       });
     }
     return out;
+  }
+};
+
+// src/multiplayer/RoomManager.ts
+var RoomManager = class {
+  rooms = /* @__PURE__ */ new Map();
+  where = /* @__PURE__ */ new Map();
+  next = 1;
+  capacity;
+  constructor(capacity = MULTIPLAYER_CONFIG.maxRealPlayersPerRoom) {
+    this.capacity = capacity;
+  }
+  /** Coloca o jogador numa sala (ou mantém a atual). */
+  assign(playerId) {
+    const cur = this.roomOf(playerId);
+    if (cur) return cur;
+    let best = null;
+    for (const r of this.rooms.values()) {
+      if (r.players.size >= this.capacity) continue;
+      if (!best || r.players.size > best.players.size) best = r;
+    }
+    if (!best) {
+      best = { id: `sala-${this.next++}`, players: /* @__PURE__ */ new Set(), botSlots: BOT_CONFIG.physicalBotsPerRoom };
+      this.rooms.set(best.id, best);
+    }
+    best.players.add(playerId);
+    this.where.set(playerId, best.id);
+    return best;
+  }
+  remove(playerId) {
+    const r = this.roomOf(playerId);
+    if (!r) return null;
+    r.players.delete(playerId);
+    this.where.delete(playerId);
+    if (r.players.size === 0) this.rooms.delete(r.id);
+    return r;
+  }
+  roomOf(playerId) {
+    const id = this.where.get(playerId);
+    return id ? this.rooms.get(id) ?? null : null;
+  }
+  /** Outros jogadores da mesma sala. */
+  mates(playerId) {
+    const r = this.roomOf(playerId);
+    return r ? [...r.players].filter((p) => p !== playerId) : [];
+  }
+  all() {
+    return [...this.rooms.values()];
+  }
+  get playerCount() {
+    return this.where.size;
   }
 };
 
@@ -2635,6 +2680,85 @@ function lerp(a, b, t) {
 }
 var CalculationEngine = { geometricSum, stackFactor, applyPercent, lerp };
 
+// src/math/RandomGrowth.ts
+var MEMO_CAP = 2e6;
+var TAIL_TERMS = 12;
+function unitRoll(j) {
+  let h = (Math.floor(j) ^ 2654435769) >>> 0;
+  h = Math.imul(h ^ h >>> 16, 2246822507) >>> 0;
+  h = Math.imul(h ^ h >>> 13, 3266489909) >>> 0;
+  h = (h ^ h >>> 16) >>> 0;
+  const hi = Math.floor(j / 4294967296);
+  if (hi) h = (Math.imul(h ^ hi, 668265263) ^ h >>> 15) >>> 0;
+  return h / 4294967296;
+}
+function growthAt(range, j) {
+  return range.min + (range.max - range.min) * unitRoll(j);
+}
+var memos = /* @__PURE__ */ new Map();
+function memoFor(range) {
+  const key = `${range.min}:${range.max}`;
+  let m = memos.get(key);
+  if (!m) {
+    const a = range.min, b = range.max;
+    const mean = b === a ? Math.log10(a) : (b * Math.log(b) - b - (a * Math.log(a) - a)) / (b - a) / Math.LN10;
+    m = { prefix: new Float64Array(1024), filled: 0, mean };
+    memos.set(key, m);
+  }
+  return { key, m };
+}
+function logProduct(range, index) {
+  if (!(index > 0)) return 0;
+  const { m } = memoFor(range);
+  const i = Math.floor(index);
+  const upto = Math.min(i, MEMO_CAP);
+  if (upto > m.filled) {
+    if (upto >= m.prefix.length) {
+      const next = new Float64Array(Math.min(MEMO_CAP + 1, Math.max(upto + 1, m.prefix.length * 2)));
+      next.set(m.prefix);
+      m.prefix = next;
+    }
+    for (let j = m.filled; j < upto; j++) m.prefix[j + 1] = m.prefix[j] + Math.log10(growthAt(range, j));
+    m.filled = upto;
+  }
+  const base = m.prefix[upto];
+  return i > MEMO_CAP ? base + (i - MEMO_CAP) * m.mean : base;
+}
+function idx(i) {
+  const v = NumberEngine.toNumber(NumberEngine.max(0, i));
+  return Number.isFinite(v) ? v : Number.MAX_VALUE;
+}
+function requirementAtRandom(base, range, index) {
+  return NumberEngine.multiply(base, NumberEngine.fromLog10(logProduct(range, idx(index))));
+}
+function costForRandom(base, range, owned, count2, u, mode) {
+  if (count2 <= 0) return NumberEngine.ZERO;
+  const o = idx(owned);
+  const at = (k) => requirementAtRandom(base, range, o + k * u);
+  if (mode === "threshold") return at(count2 - 1);
+  let sum2 = NumberEngine.ZERO;
+  for (let k = Math.max(0, count2 - TAIL_TERMS); k < count2; k++) sum2 = NumberEngine.add(sum2, at(k));
+  return sum2;
+}
+function maxAffordableRandom(base, range, owned, budget, u, mode, limit) {
+  const R = NumberEngine.from(budget);
+  const fits = (n) => n === 0 || NumberEngine.lte(costForRandom(base, range, owned, n, u, mode), R);
+  if (!fits(1)) return 0;
+  const cap = limit ?? Number.MAX_SAFE_INTEGER;
+  let lo = 1, hi = 2;
+  while (hi <= cap && fits(hi)) {
+    lo = hi;
+    hi *= 2;
+  }
+  hi = Math.min(hi, cap + 1);
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return Math.min(lo, cap);
+}
+
 // src/math/ProgressionCalculator.ts
 function assertCurve(c) {
   if (!NumberEngine.isPositive(c.base)) throw new MathError("INVALID_CONFIG", `base de custo deve ser > 0 (${String(c.base)})`);
@@ -2734,18 +2858,25 @@ function planLayerPurchase(layerId, input) {
   const u = NumberEngine.from(input.unitsPerPurchase ?? 1);
   const bulk = !input.single && isBulkAllowed(layer, input.unlockedEffects ?? /* @__PURE__ */ new Set());
   const ownedIndex = layer.costIndex === "units" ? owned : NumberEngine.ZERO;
+  const uNum = NumberEngine.toNumber(u);
   let purchases = null;
   for (const req of layer.requirements) {
-    const r = planBulk({
-      curve: curveOf(req),
-      ownedIndex,
-      budget: input.stats[req.resource] ?? NumberEngine.ZERO,
-      mode: req.costMode,
-      unitsPerPurchase: u,
-      costIndex: layer.costIndex,
-      ...bulk ? {} : { limit: 1 }
-    });
-    purchases = purchases === null ? r.purchases : NumberEngine.min(purchases, r.purchases);
+    let reqPurchases;
+    if (req.growthRange) {
+      const n = maxAffordableRandom(req.base, req.growthRange, ownedIndex, input.stats[req.resource] ?? NumberEngine.ZERO, layer.costIndex === "units" ? uNum : 1, req.costMode, bulk ? void 0 : 1);
+      reqPurchases = NumberEngine.from(n);
+    } else {
+      reqPurchases = planBulk({
+        curve: curveOf(req),
+        ownedIndex,
+        budget: input.stats[req.resource] ?? NumberEngine.ZERO,
+        mode: req.costMode,
+        unitsPerPurchase: u,
+        costIndex: layer.costIndex,
+        ...bulk ? {} : { limit: 1 }
+      }).purchases;
+    }
+    purchases = purchases === null ? reqPurchases : NumberEngine.min(purchases, reqPurchases);
   }
   const p = purchases ?? NumberEngine.ZERO;
   const unitsGained = NumberEngine.multiply(p, u);
@@ -2758,13 +2889,16 @@ function planLayerPurchase(layerId, input) {
     costs: layer.requirements.map((req) => ({
       resource: req.resource,
       mode: req.costMode,
-      amount: costFor({ base: requirementAt(curveOf(req), ownedIndex), growth: perPurchaseGrowth(req) }, 0, p, req.costMode)
+      amount: req.growthRange ? costForRandom(req.base, req.growthRange, ownedIndex, NumberEngine.toNumber(p), layer.costIndex === "units" ? uNum : 1, req.costMode) : costFor({ base: requirementAt(curveOf(req), ownedIndex), growth: perPurchaseGrowth(req) }, 0, p, req.costMode)
     })),
     nextRequirements: layer.requirements.map((req) => ({
       resource: req.resource,
-      amount: requirementAt(curveOf(req), NumberEngine.add(ownedIndex, advance))
+      amount: requirementOf(req, NumberEngine.add(ownedIndex, advance))
     }))
   };
+}
+function requirementOf(req, index) {
+  return req.growthRange ? requirementAtRandom(req.base, req.growthRange, index) : requirementAt(curveOf(req), index);
 }
 function levelXpRequirement(levelUps) {
   return requirementAt({ base: LEVEL_CONFIG.xpBase, growth: LEVEL_CONFIG.xpGrowth }, levelUps);
@@ -2779,10 +2913,11 @@ function calculateNextRequirement(type, owned) {
   if (type === "level") return levelXpRequirement(owned);
   const req = RESET_LAYERS[type].requirements[0];
   if (!req) throw new MathError("INVALID_CONFIG", `camada ${type} sem requisitos`);
-  return requirementAt(curveOf(req), owned);
+  return requirementOf(req, owned);
 }
 var ProgressionCalculator = {
   requirementAt,
+  requirementOf,
   cumulativeCost,
   costFor,
   maxAffordable,
@@ -2819,11 +2954,21 @@ function setAutomation(state, layer, enabled) {
 // src/inventory/DropSystem.ts
 var STEP_DROP_CHANCE = 0.06;
 var CARD_SHARE = 0.25;
+function dropChanceAt(flight) {
+  return Math.min(0.14, STEP_DROP_CHANCE + 4e-3 * flight);
+}
+function cardShareAt(flight) {
+  return Math.min(0.65, CARD_SHARE + 0.02 * flight);
+}
+function minTierAt(flight) {
+  return Math.min(8, Math.floor(flight / 4));
+}
 function dropForStep(step) {
-  if (step <= 0 || variation(step, 101) >= STEP_DROP_CHANCE) return null;
+  if (step <= 0) return null;
   const flight = flightOf(step);
-  const isCard = variation(step, 103) < CARD_SHARE;
-  const r = pickRarity(isCard ? "card" : "item", flight, variation(step, 107));
+  if (variation(step, 101) >= dropChanceAt(flight)) return null;
+  const isCard = variation(step, 103) < cardShareAt(flight);
+  const r = pickRarity(isCard ? "card" : "item", flight, variation(step, 107), minTierAt(flight));
   const pool = isCard ? CARD_TEMPLATES : CONSUMABLE_TEMPLATES;
   const t = pool[Math.floor(variation(step, 109) * pool.length)];
   return `${isCard ? "carta" : "item"}:${t}:${r.id}`;
@@ -2880,7 +3025,28 @@ var RESET_TABLE = {
 };
 
 // src/progression/EffectEngine.ts
-var EFFECT_ORDER = ["base", "layers", "letters", "additivePercent", "penalties", "reverse"];
+var EFFECT_ORDER = ["base", "layers", "letters", "level", "additivePercent", "penalties", "reverse"];
+var LEVEL_GAIN_CHANNELS = [
+  "xpGain",
+  "letterGain",
+  "multiplierGain",
+  "rankGain",
+  "rebirthGain",
+  "ultraRebirthGain",
+  "prestigeGain",
+  "ultraPrestigeGain"
+];
+function levelGainFactor(level) {
+  const n = NumberEngine.abs(level);
+  const p = NumberEngine.divide(LEVEL_EFFECTS.allGainPercentPerLevel, 100);
+  return LEVEL_EFFECTS.allGainMode === "compound" ? NumberEngine.pow(NumberEngine.add(1, p), n) : NumberEngine.add(1, NumberEngine.multiply(p, n));
+}
+function letterCycleSeconds(level) {
+  const base = LETTERS_CONFIG.cycleSeconds;
+  const lv = NumberEngine.toNumber(NumberEngine.min(NumberEngine.abs(level), 1e9));
+  const steps = Math.floor(lv / LEVEL_EFFECTS.letterCycleReductionPerLevel + 1e-9);
+  return Math.max(LEVEL_EFFECTS.minLetterCycleSeconds, base - steps * LEVEL_EFFECTS.letterCycleReductionSeconds);
+}
 var CHANNELS = [
   "xpGain",
   "letterGain",
@@ -2914,10 +3080,13 @@ function computeEffects(state, sources = [], now = 0) {
       for (const id of RESET_LAYER_ORDER) {
         const owned = NumberEngine.abs(state.stats[id]);
         if (NumberEngine.isZero(owned)) continue;
+        const power2 = RESET_LAYERS[id].rewardPowerAfterFirst;
+        const squared = power2 !== void 0 && power2 !== 1 && NumberEngine.gte(owned, 1);
         for (const r of RESET_LAYERS[id].rewards) {
-          const f = CalculationEngine.stackFactor(r.stacking, r.amountPerUnit, owned);
+          let f = CalculationEngine.stackFactor(r.stacking, r.amountPerUnit, owned);
+          if (squared) f = NumberEngine.pow(f, power2);
           factors[r.channel] = NumberEngine.multiply(factors[r.channel], f);
-          breakdown[r.channel].push({ stage, label: RESET_LAYERS[id].displayName, factor: f });
+          breakdown[r.channel].push({ stage, label: squared ? `${RESET_LAYERS[id].displayName} (\xB2)` : RESET_LAYERS[id].displayName, factor: f });
         }
       }
     } else if (stage === "letters") {
@@ -2925,6 +3094,14 @@ function computeEffects(state, sources = [], now = 0) {
       if (NumberEngine.gt(f, 1)) {
         factors.xpGain = NumberEngine.multiply(factors.xpGain, f);
         breakdown.xpGain.push({ stage, label: "Letras", factor: f });
+      }
+    } else if (stage === "level") {
+      const f = levelGainFactor(state.stats.level);
+      if (NumberEngine.gt(f, 1)) {
+        for (const c of LEVEL_GAIN_CHANNELS) {
+          factors[c] = NumberEngine.multiply(factors[c], f);
+          breakdown[c].push({ stage, label: "N\xEDvel", factor: f });
+        }
       }
     } else if (stage === "additivePercent" || stage === "penalties") {
       const kind = stage === "additivePercent" ? "percent" : "penalty";
@@ -2983,9 +3160,12 @@ function applyLevelUps(state) {
     gained: n
   };
 }
+function unitsPerPurchaseOf(effects, layer) {
+  return NumberEngine.max(1, NumberEngine.floor(effects.factors[UNITS_CHANNEL[layer] ?? "prestigeGain"]));
+}
 function performPrestige(state, layer, opts = {}) {
   const effects = opts.effects ?? computeEffects(state, opts.sources);
-  const units = effects.factors[UNITS_CHANNEL[layer] ?? "prestigeGain"];
+  const units = unitsPerPurchaseOf(effects, layer);
   const plan = ProgressionCalculator.planLayerPurchase(layer, {
     stats: state.stats,
     unitsPerPurchase: units,
@@ -3009,7 +3189,7 @@ function performPrestige(state, layer, opts = {}) {
 function previewPrestige(state, layer, effects, single = false) {
   return ProgressionCalculator.planLayerPurchase(layer, {
     stats: state.stats,
-    unitsPerPurchase: effects.factors[UNITS_CHANNEL[layer] ?? "prestigeGain"],
+    unitsPerPurchase: unitsPerPurchaseOf(effects, layer),
     unlockedEffects: new Set(state.unlockedEffects),
     single,
     polarity: state.polarity
@@ -3022,8 +3202,9 @@ function tick(state, dt, ctx, automationClock = { t: 0 }) {
   let expiredIds = [];
   let effects = computeEffects(s, ctx.sources, ctx.now);
   let timer = s.letterTimer + safeDt;
-  const cycles = Math.floor(timer / LETTERS_CONFIG.cycleSeconds);
-  timer -= cycles * LETTERS_CONFIG.cycleSeconds;
+  const cycle = letterCycleSeconds(s.stats.level);
+  const cycles = Math.floor(timer / cycle);
+  timer -= cycles * cycle;
   if (cycles > 0) {
     const amount = NumberEngine.multiply(lettersPerCycleOf(s, effects), cycles);
     s = { ...s, stats: { ...s.stats, letters: NumberEngine.add(s.stats.letters, amount) } };
@@ -3056,7 +3237,7 @@ function tick(state, dt, ctx, automationClock = { t: 0 }) {
     if (expiredIds.length) events.push({ kind: "buffExpired", ids: expiredIds });
   }
   if (s !== state) effects = computeEffects(s, ctx.sources, ctx.now);
-  return { state: s, events, effects, rates: { xpPerSecond: ctx.onStair ? xpRate(s, effects, ctx.step, ctx.moving) : NumberEngine.ZERO, lettersPerCycle: lettersPerCycleOf(s, effects) } };
+  return { state: s, events, effects, rates: { xpPerSecond: ctx.onStair ? xpRate(s, effects, ctx.step, ctx.moving) : NumberEngine.ZERO, lettersPerCycle: lettersPerCycleOf(s, effects), cycleSeconds: letterCycleSeconds(s.stats.level) } };
 }
 
 // src/progression/PlayerVitals.ts
@@ -3284,12 +3465,12 @@ var ServerPlayer = class {
 
 // src/ai/BotBrain.ts
 var PROFILES = {
-  velocista: { id: "velocista", label: "Velocista", speed: 7.6, risk: 0.06, buyRatio: 0, autoUpTo: 6, activity: 0.8, corrupted: true, seeksNegation: false, dashBudget: 0.6 },
-  matematico: { id: "matematico", label: "Matem\xE1tico", speed: 6.2, risk: 0.035, buyRatio: 0.5, autoUpTo: 3, activity: 0.85, corrupted: true, seeksNegation: false, dashBudget: 0.45 },
-  resistente: { id: "resistente", label: "Resistente", speed: 5.6, risk: 0.02, buyRatio: 0.75, autoUpTo: 2, activity: 0.9, corrupted: false, seeksNegation: false, dashBudget: 0.3 },
-  "longo-prazo": { id: "longo-prazo", label: "Longo prazo", speed: 6, risk: 0.03, buyRatio: 1.5, autoUpTo: 1, activity: 0.92, corrupted: false, seeksNegation: false, dashBudget: 0.4 },
-  oportunista: { id: "oportunista", label: "Oportunista", speed: 7, risk: 0.045, buyRatio: 0.25, autoUpTo: 4, activity: 0.75, corrupted: true, seeksNegation: false, dashBudget: 0.55 },
-  abissal: { id: "abissal", label: "Abissal", speed: 7.2, risk: 0.05, buyRatio: 0, autoUpTo: 6, activity: 0.8, corrupted: true, seeksNegation: true, dashBudget: 0.6 }
+  velocista: { id: "velocista", label: "Velocista", speed: 7.6, risk: 0.06, buyRatio: 0, autoUpTo: 6, activity: 0.32, corrupted: true, seeksNegation: false, dashBudget: 0.6 },
+  matematico: { id: "matematico", label: "Matem\xE1tico", speed: 6.2, risk: 0.035, buyRatio: 0.5, autoUpTo: 3, activity: 0.38, corrupted: true, seeksNegation: false, dashBudget: 0.45 },
+  resistente: { id: "resistente", label: "Resistente", speed: 5.6, risk: 0.02, buyRatio: 0.75, autoUpTo: 2, activity: 0.42, corrupted: false, seeksNegation: false, dashBudget: 0.3 },
+  "longo-prazo": { id: "longo-prazo", label: "Longo prazo", speed: 6, risk: 0.03, buyRatio: 1.5, autoUpTo: 1, activity: 0.45, corrupted: false, seeksNegation: false, dashBudget: 0.4 },
+  oportunista: { id: "oportunista", label: "Oportunista", speed: 7, risk: 0.045, buyRatio: 0.25, autoUpTo: 4, activity: 0.3, corrupted: true, seeksNegation: false, dashBudget: 0.55 },
+  abissal: { id: "abissal", label: "Abissal", speed: 7.2, risk: 0.05, buyRatio: 0, autoUpTo: 6, activity: 0.33, corrupted: true, seeksNegation: true, dashBudget: 0.6 }
 };
 var MAX_STEP = 1e13;
 var DAMAGE_SCALE = Number(MIASMA_CONFIG.damageScale);
@@ -3327,6 +3508,7 @@ function planClimb(state, effects, profile) {
   if (safe > 0 && prevTop > 0 && prevTop < safe && NumberEngine.gt(stepXp(prevTop), stepXp(safe))) farm = prevTop;
   return { safe, explore, farm };
 }
+var SKILL_RANGE = [0.55, 0.95];
 function decidePurchases(state, profile, rand) {
   let s = state;
   const events = [];
@@ -3455,9 +3637,12 @@ function stepAtTau(tau, lane) {
   const surf = surfaceAt(p.seg, p.x, p.s);
   return { step: surf.step, platformOf: surf.kind === "platform" ? surf.step / STEPS_PER_SEGMENT : null };
 }
+function speedOf(b) {
+  return Math.min(7.6, b.profile.speed * (0.75 + 0.25 * b.skill));
+}
 function tauAt(b, t) {
   const d = b.target - b.tau0;
-  const run = b.profile.speed * Math.max(0, t - b.t0);
+  const run = speedOf(b) * Math.max(0, t - b.t0);
   return Math.abs(d) <= run ? b.target : b.tau0 + Math.sign(d) * run;
 }
 function moveTo(b, t, target) {
@@ -3484,6 +3669,7 @@ var BotWorld = class {
     const profiles = BOT_CONFIG.strategyProfiles;
     for (let i = 0; i < count2; i++) {
       const rand = mulberry32(this.seed + i * 7919);
+      const skill = SKILL_RANGE[0] + (SKILL_RANGE[1] - SKILL_RANGE[0]) * mulberry32(this.seed + i * 31337)();
       const id = `ia${String(i + 1).padStart(3, "0")}`;
       const s = saved?.bots.find((b) => b.id === id);
       const profile = PROFILES[s?.profile ?? profiles[i % profiles.length]] ?? PROFILES.matematico;
@@ -3521,7 +3707,8 @@ var BotWorld = class {
         lastDecide: -Infinity,
         autoClock: { t: 0 },
         rand,
-        drive: 1
+        drive: 1,
+        skill
       });
     }
     if (!saved && opts.warmupMinutes) {
@@ -3582,7 +3769,7 @@ var BotWorld = class {
     const embodied = this.embodied.has(b.id);
     if (t >= b.nextSwitch && !embodied) {
       b.active = !b.active;
-      const on = between(b.rand, 20, 120) * 60;
+      const on = between(b.rand, 20, 90) * 60;
       b.nextSwitch = t + (b.active ? on : on * (1 - b.profile.activity) / b.profile.activity);
       if (!b.active) {
         b.tau0 = b.target = 0;
@@ -3595,10 +3782,12 @@ var BotWorld = class {
       b.deadUntil = 0;
     }
     const tau = tauAt(b, t);
-    const { step, platformOf } = stepAtTau(tau, b.lane);
-    if (step > 0 && (NumberEngine.gt(step, b.state.highestStep) || platformOf !== null && platformOf > NumberEngine.toNumber(b.state.pedestalsPassed))) {
-      b.state = applyClimb(b.state, step, platformOf).state;
+    const { step: stepNow, platformOf } = stepAtTau(tau, b.lane);
+    if (stepNow > 0 && (NumberEngine.gt(stepNow, b.state.highestStep) || platformOf !== null && platformOf > NumberEngine.toNumber(b.state.pedestalsPassed))) {
+      b.state = applyClimb(b.state, stepNow, platformOf).state;
     }
+    const stepThen = stepAtTau(tauAt(b, Math.max(b.t0, t - dt)), b.lane).step;
+    const step = Math.min(stepNow, stepThen);
     const moving = tau !== b.target;
     const pr = tick(b.state, dt, { step, onStair: step > 0, moving }, b.autoClock);
     b.state = pr.state;
@@ -3616,21 +3805,22 @@ var BotWorld = class {
     }
     const hpFrac = NumberEngine.toNumber(NumberEngine.divide(sv.hp, sv.reading.maxHp));
     const retreat = b.mode === "explore" && hpFrac < 0.45 && !(b.profile.seeksNegation && b.state.polarity === 1);
-    if (t - b.lastDecide >= DECIDE_EVERY || retreat) this.decide(b, t, hpFrac);
+    if (t - b.lastDecide >= DECIDE_EVERY + 6 * (1 - b.skill) || retreat) this.decide(b, t, hpFrac);
   }
   decide(b, t, hpFrac) {
     b.lastDecide = t;
-    let s = decidePurchases(b.state, b.profile, b.rand).state;
+    let s = b.rand() < 0.55 + 0.45 * b.skill ? decidePurchases(b.state, b.profile, b.rand).state : b.state;
     s = decideAutomation(s, b.profile);
     const effects = computeEffects(s);
     const drive = b.drive;
-    const plan = planClimb(s, effects, { speed: b.profile.speed, risk: b.profile.risk * drive, dashBudget: Math.min(0.8, b.profile.dashBudget * drive) });
+    const plan = planClimb(s, effects, { speed: speedOf(b), risk: b.profile.risk * drive, dashBudget: Math.min(0.75, b.profile.dashBudget * drive * b.skill) });
     if (b.mode === "explore" && hpFrac < 0.45) b.mode = "farm";
     else if (b.mode === "farm" && hpFrac >= 0.95 && plan.explore > plan.farm + 2) b.mode = "explore";
-    s = decideInventory(s, b.profile, b.mode === "explore");
+    if (b.rand() < b.skill) s = decideInventory(s, b.profile, b.mode === "explore");
     b.state = s;
-    let targetStep = b.mode === "explore" ? plan.explore : plan.farm;
-    if (b.profile.seeksNegation && s.polarity === 1) targetStep = Math.max(plan.explore, NumberEngine.toNumber(NumberEngine.min(s.highestStep, 1e12))) + 40;
+    const slack = Math.floor((1 - b.skill) * 6 * b.rand());
+    let targetStep = b.mode === "explore" ? plan.explore : Math.max(plan.farm > 0 ? 1 : 0, plan.farm - slack);
+    if (b.profile.seeksNegation && s.polarity === 1) targetStep = plan.explore + 3;
     if (this.embodied.has(b.id) && b.mode === "farm" && targetStep > 3 && Math.floor(t / DECIDE_EVERY) % 2 === 1) targetStep -= 2;
     const tau = targetStep > 0 && targetStep % STEPS_PER_SEGMENT === 0 && b.mode === "explore" ? LOBBY_RUN + (targetStep / STEPS_PER_SEGMENT - 1) * SEGMENT_LENGTH + STAIR_LEN + 1.2 : tauOfStep(targetStep);
     if (Math.abs(tau - b.target) > 0.01) moveTo(b, t, tau);
@@ -3642,7 +3832,7 @@ var BotWorld = class {
   compare(levelPositions) {
     for (const b of this.bots) {
       const p = levelPositions.get(b.id) ?? 101;
-      b.drive = p > 100 ? 1.35 : p > 50 ? 1.2 : p <= 5 ? 0.85 : 1;
+      b.drive = p > 100 ? 1.2 : p > 50 ? 1.1 : p <= 5 ? 0.9 : 1;
     }
   }
   // ---------------------------------------------------------------- IAs físicas
@@ -3698,7 +3888,7 @@ var BotWorld = class {
 
 // src/server/GameServer.ts
 var accountIdOf = (token) => `j${createHash2("sha256").update(`conta:${token}`).digest("hex").slice(0, 12)}`;
-var SERVER_BOTS = { warmupMinutes: [0, 180], warmupStep: 10, lazyWarmup: true };
+var SERVER_BOTS = { warmupMinutes: [0, 45], warmupStep: 10, lazyWarmup: true };
 var BOTS_SAVE_EVERY_MS = 3e4;
 var WARMUP_BUDGET_MS = 20;
 var TICK_MS = 100;
@@ -3718,6 +3908,10 @@ var Session = class {
   transport;
   /** Último nível/polaridade anunciados à sala (nameplates). */
   announced = "";
+  /** Cor do jogador no chat (índice em CHAT_COLORS). */
+  chatColor = 0;
+  /** Instantes das últimas mensagens de chat (limite anti-spam). */
+  chatTimes = [];
   constructor(sid, transport, now) {
     this.sid = sid;
     this.transport = transport;
@@ -3757,6 +3951,8 @@ var GameServer = class {
   roomBots = /* @__PURE__ */ new Map();
   botBadges = /* @__PURE__ */ new Map();
   botsSaveAcc = 0;
+  chatLog = [];
+  chatSeq = 1;
   warmed = false;
   secret;
   trustLocal;
@@ -3834,6 +4030,8 @@ var GameServer = class {
         return;
       case "join":
         return this.join(s, m, now);
+      case "chat":
+        return this.chat(s, m.text, m.nonce, now);
       case "part":
         return this.part(s);
       case "move": {
@@ -3901,6 +4099,7 @@ var GameServer = class {
     s.account = account;
     s.player = player;
     this.active.set(account.id, s);
+    s.chatColor = this.pickChatColor(s);
     const room = this.rooms.assign(account.id);
     this.boards.upsert(account.id, name, valuesOf(state), now);
     s.announced = this.badge(s);
@@ -3925,6 +4124,7 @@ var GameServer = class {
     });
     for (const id of this.rooms.mates(account.id)) this.active.get(id)?.send({ t: "joined", player: { ...this.info(s), pos: this.packed(s) } });
     s.send({ t: "boards", at: now, boards: this.boards.snapshot() });
+    s.send({ t: "chatHistory", list: this.chatLog });
     this.dirty.add(account.id);
   }
   /** Assinatura de um save (HMAC do conteúdo, ligado à conta). */
@@ -3952,6 +4152,55 @@ var GameServer = class {
     const signed = m.signed && this.verify(account.id, m.signed.save, m.signed.sig) ? tryParse2(m.signed.save) : null;
     const local = this.trustLocal ? tryParse2(m.save) : null;
     return local ?? signed ?? tryParse2(account.save) ?? createInitialProgress();
+  }
+  /** Chat global: entregue na hora a todos os jogadores online (sem esperar o laço). */
+  chat(s, raw, nonce, now) {
+    const a = s.account, p = s.player;
+    if (!a || !p) return;
+    const text = cleanChatText(raw);
+    const fail = (reason) => s.send({ t: "chatError", nonce, reason });
+    if (!text) return fail("mensagem vazia");
+    s.chatTimes = s.chatTimes.filter((x) => now - x < 1e4);
+    const last = s.chatTimes[s.chatTimes.length - 1] ?? -Infinity;
+    if (now - last < 600 || s.chatTimes.length >= 6) return fail("devagar: espere um instante para mandar outra mensagem");
+    s.chatTimes.push(now);
+    const msg = {
+      id: this.chatSeq++,
+      from: a.id,
+      name: a.name,
+      color: s.chatColor,
+      text,
+      level: p.state.stats.level.toJSON(),
+      polarity: p.state.polarity,
+      best: this.bestStanding(a.id, p.state),
+      at: now
+    };
+    this.chatLog.push(msg);
+    if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
+    const forOthers = JSON.stringify({ t: "chat", m: msg });
+    for (const o of this.active.values()) {
+      if (o === s) o.send({ t: "chat", m: { ...msg, nonce } });
+      else o.transport.send(forOthers);
+    }
+  }
+  /** Atributo em que o jogador tem MAIS quantidade e a posição dele nessa tabela. */
+  bestStanding(id, state) {
+    let best = null;
+    for (const c of CATEGORIES2) {
+      if (NumberEngine.isZero(state.stats[c])) continue;
+      if (!best || NumberEngine.gt(NumberEngine.abs(state.stats[c]), NumberEngine.abs(state.stats[best]))) best = c;
+    }
+    if (!best) return null;
+    this.boards.upsert(id, this.accounts.get(id)?.name ?? "?", valuesOf(state), this.clock());
+    return { category: best, position: this.boards.positionOf(id, best) };
+  }
+  /** Cor de chat menos usada entre quem está online (15 cores). */
+  pickChatColor(except) {
+    const used = new Array(CHAT_COLORS.length).fill(0);
+    for (const o of this.active.values()) if (o !== except) used[o.chatColor]++;
+    let best = 0;
+    for (let i = 1; i < used.length; i++) if (used[i] < used[best]) best = i;
+    return best;
   }
   part(s) {
     const a = s.account, p = s.player;

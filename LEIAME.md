@@ -1,4 +1,4 @@
-# Ascension Infinite — servidor para o Render (v0.9.3)
+# Ascension Infinite — servidor para o Render (v1.0.0)
 
 Arquivos deste pacote (envie TODOS para a raiz do repositório no GitHub):
 
