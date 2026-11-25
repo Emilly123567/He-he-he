@@ -1,4 +1,4 @@
-# Ascension Infinite — servidor para o Render (v0.9.2)
+# Ascension Infinite — servidor para o Render (v0.9.3)
 
 Arquivos deste pacote (envie TODOS para a raiz do repositório no GitHub):
 
@@ -36,6 +36,13 @@ mesmo aparelho e baixar/importar o backup de cada uma em arquivo.
   dados dele a cada reinício (as classificações e as IAs recomeçam), mas o progresso dos jogadores volta
   pelo backup local quando eles entram de novo.
 - **Starter + disco**: dados permanentes. No render.yaml: `plan: starter`, descomente `disk` e use `DATA_DIR=/var/data`.
+
+## Se algo der errado
+- Abra a aba **Logs** do serviço no Render. Ao iniciar deve aparecer
+  `Ascension Infinite · servidor oficial em http://0.0.0.0:10000` e uma linha com a versão do Node.
+- Erros aparecem como `[erro] ...` e **não derrubam** o servidor.
+- `Cannot find module .../server.mjs`: os arquivos foram enviados dentro de uma subpasta no GitHub —
+  eles precisam ficar na raiz do repositório (server.mjs, public/, package.json, render.yaml).
 
 ## Variáveis opcionais
 - `BOTS=0` desliga as IAs · `BOTS_WARMUP=0,180` antiguidade inicial das IAs em minutos.

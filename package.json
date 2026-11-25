@@ -1,6 +1,6 @@
 {
   "name": "ascension-infinite-servidor",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": true,
   "type": "module",
   "description": "Servidor oficial do Ascension Infinite (jogo + WebSocket /ws). Sem dependências.",
@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "build": "node -e \"console.log('nada a compilar: server.mjs já está pronto')\""
   }
 }

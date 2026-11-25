@@ -63,6 +63,8 @@ var WsConnection = class {
     this.onclose?.(code, reason);
   }
   write(opcode, payload) {
+    if (this.closed && opcode !== 8) return;
+    if (!this.socket.writable) return;
     const len = payload.length;
     let head;
     if (len < 126) {
@@ -81,6 +83,15 @@ var WsConnection = class {
     this.socket.write(Buffer.concat([head, payload]));
   }
   onData(d) {
+    try {
+      this.parse(d);
+    } catch (e) {
+      console.error("[erro] ws quadro:", e?.message ?? e);
+      this.socket.destroy();
+      this.finish(1011, "erro interno");
+    }
+  }
+  parse(d) {
     this.alive = true;
     this.buf = this.buf.length ? Buffer.concat([this.buf, d]) : d;
     if (this.buf.length > this.max * 2 + 14) return this.close(1009, "mensagem grande demais");
@@ -126,7 +137,11 @@ var WsConnection = class {
         const text = Buffer.concat(this.fragments).toString("utf8");
         this.fragments = [];
         this.fragmentBytes = 0;
-        this.onmessage?.(text);
+        try {
+          this.onmessage?.(text);
+        } catch (e) {
+          console.error("[erro] ws mensagem:", e?.message ?? e);
+        }
         return;
       }
       case 2:
@@ -146,6 +161,7 @@ var WsConnection = class {
 function attachWebSocket(server2, opts, onConnection) {
   const all = /* @__PURE__ */ new Set();
   server2.on("upgrade", (req, socket) => {
+    socket.on("error", () => socket.destroy());
     const url = (req.url ?? "").split("?")[0];
     const key = req.headers["sec-websocket-key"];
     if (url !== opts.path || typeof key !== "string" || req.headers.upgrade?.toLowerCase() !== "websocket") {
@@ -3972,7 +3988,7 @@ var GameServer = class {
     a.position = p.dead ? null : { ...p.pos };
     a.updatedAt = this.clock();
     a.achievedAt = { ...this.boards.get(a.id)?.achievedAt ?? {} };
-    this.store.save(a);
+    this.safeSave(a);
     this.dirty.delete(a.id);
   }
   /** Laço do servidor: chame a cada ~100 ms (main.ts) ou manualmente nos testes. */
@@ -3983,7 +3999,13 @@ var GameServer = class {
     const dt = dtMs / 1e3;
     for (const s of this.active.values()) {
       const p = s.player, a = s.account;
-      const r = p.tick(dt, now / 1e3);
+      let r;
+      try {
+        r = p.tick(dt, now / 1e3);
+      } catch (e) {
+        console.error(`[erro] simula\xE7\xE3o de ${a.id}:`, e?.message ?? e);
+        continue;
+      }
       if (r.death) s.send({ t: "death", deaths: r.death.state.miasmaDeaths, negated: r.death.negated });
       if (r.death || r.events.length) this.dirty.add(a.id);
       this.boards.upsert(a.id, a.name, valuesOf(p.state), now);
@@ -3994,16 +4016,20 @@ var GameServer = class {
       }
     }
     if (this.bots) {
-      if (this.bots.warming) {
-        if (this.bots.warmupSome(WARMUP_BUDGET_MS)) this.publishBots(this.bots.bots);
-      } else {
-        this.publishBots(this.bots.update(now / 1e3));
-        if (!this.warmed) this.warmed = true;
+      try {
+        if (this.bots.warming) {
+          if (this.bots.warmupSome(WARMUP_BUDGET_MS)) this.publishBots(this.bots.bots);
+        } else {
+          this.publishBots(this.bots.update(now / 1e3));
+          if (!this.warmed) this.warmed = true;
+        }
+      } catch (e) {
+        console.error("[erro] IAs:", e?.message ?? e);
       }
       this.botsSaveAcc += dtMs;
       if (this.botsSaveAcc >= BOTS_SAVE_EVERY_MS) {
         this.botsSaveAcc = 0;
-        this.store.saveBots?.(this.bots.toJSON(now / 1e3));
+        this.safeSaveBots();
       }
     }
     for (const room of this.rooms.all()) {
@@ -4047,12 +4073,28 @@ var GameServer = class {
       this.flush();
     }
   }
+  /** Falha de disco (cheio, sem permissão) não derruba o jogo: o backup local dos jogadores segue valendo. */
+  safeSave(a) {
+    try {
+      this.store.save(a);
+    } catch (e) {
+      console.error("[erro] gravar conta:", e?.message ?? e);
+    }
+  }
+  safeSaveBots() {
+    if (!this.bots || this.bots.warming) return;
+    try {
+      this.store.saveBots?.(this.bots.toJSON(this.clock() / 1e3));
+    } catch (e) {
+      console.error("[erro] gravar IAs:", e?.message ?? e);
+    }
+  }
   /** Grava as contas com mudanças. */
   flush() {
     for (const s of this.active.values()) this.persistAccount(s.account, s.player);
     for (const id of this.dirty) {
       const a = this.accounts.get(id);
-      if (a) this.store.save(a);
+      if (a) this.safeSave(a);
     }
     this.dirty.clear();
   }
@@ -4062,7 +4104,7 @@ var GameServer = class {
       s.transport.close(1001, "servidor reiniciando");
     }
     this.flush();
-    if (this.bots && !this.bots.warming) this.store.saveBots?.(this.bots.toJSON(this.clock() / 1e3));
+    this.safeSaveBots();
   }
   /** Diagnóstico (testes/console do servidor). */
   inspect(id) {
@@ -4089,7 +4131,10 @@ var FileStore = class {
         const a = JSON.parse(fs.readFileSync(path.join(this.dir, f), "utf8"));
         if (a && typeof a.id === "string" && typeof a.tokenHash === "string" && typeof a.save === "string") out.push(a);
       } catch {
-        fs.renameSync(path.join(this.dir, f), path.join(this.dir, `${f}.corrompido`));
+        try {
+          fs.renameSync(path.join(this.dir, f), path.join(this.dir, `${f}.corrompido`));
+        } catch {
+        }
       }
     }
     return out;
@@ -4118,7 +4163,7 @@ var FileStore = class {
 
 // src/server/main.ts
 import { fileURLToPath } from "node:url";
-var port = Number(process.env.PORT ?? 8080);
+var port = Number(process.env.PORT) || 8080;
 var here = path2.dirname(fileURLToPath(import.meta.url));
 var root2 = path2.resolve(process.env.PUBLIC_DIR ?? (fs2.existsSync(path2.resolve("public", "index.html")) ? "public" : path2.join(here, "public")));
 var warm = (process.env.BOTS_WARMUP ?? "").split(",").map(Number);
@@ -4129,46 +4174,154 @@ var game = new GameServer(new FileStore(process.env.DATA_DIR ?? "data"), Date.no
 });
 var types = {
   ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".css": "text/css",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
   ".map": "application/json",
   ".svg": "image/svg+xml",
   ".png": "image/png",
-  ".json": "application/json"
+  ".json": "application/json",
+  ".ico": "image/x-icon"
 };
+var lastLog = /* @__PURE__ */ new Map();
+function logError(where, e) {
+  const key = `${where}:${e?.message ?? e}`;
+  const now = Date.now();
+  if ((lastLog.get(key) ?? 0) > now - 1e4) return;
+  lastLog.set(key, now);
+  console.error(`[erro] ${where}:`, e?.stack ?? e);
+}
+function status() {
+  return JSON.stringify({
+    ok: true,
+    protocol: PROTOCOL_VERSION,
+    online: game.onlineCount,
+    rooms: game.rooms.all().length,
+    bots: game.bots?.bots.length ?? 0,
+    botsWarming: game.bots?.warming ?? false,
+    uptime: Math.round(process.uptime())
+  });
+}
 var server = http.createServer((req, res) => {
-  const url = decodeURIComponent((req.url ?? "/").split("?")[0] ?? "/");
-  if (url === "/api/status") {
-    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    res.end(JSON.stringify({ ok: true, protocol: PROTOCOL_VERSION, online: game.onlineCount, rooms: game.rooms.all().length, bots: game.bots?.bots.length ?? 0, botsWarming: game.bots?.warming ?? false }));
-    return;
-  }
-  let file = path2.join(root2, url === "/" ? "index.html" : url);
-  if (!file.startsWith(root2)) {
-    res.writeHead(403);
+  try {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { allow: "GET, HEAD" });
+      res.end();
+      return;
+    }
+    let url;
+    try {
+      url = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
+    if (url === "/api/status" || url === "/healthz") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(req.method === "HEAD" ? void 0 : status());
+      return;
+    }
+    if (url.includes("\0")) {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
+    let file = path2.join(root2, url === "/" ? "index.html" : url);
+    if (file !== root2 && !file.startsWith(root2 + path2.sep)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    let st = fs2.existsSync(file) ? fs2.statSync(file) : null;
+    if (!st || st.isDirectory()) {
+      file = path2.join(root2, "index.html");
+      st = fs2.existsSync(file) ? fs2.statSync(file) : null;
+    }
+    if (!st) {
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Jogo n\xE3o encontrado: a pasta public/ precisa estar ao lado do server.mjs");
+      return;
+    }
+    const ext = path2.extname(file);
+    res.writeHead(200, {
+      "content-type": types[ext] ?? "application/octet-stream",
+      "content-length": st.size,
+      "cache-control": ext === ".html" ? "no-cache" : "public, max-age=300",
+      "x-content-type-options": "nosniff"
+    });
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    const stream = fs2.createReadStream(file);
+    stream.on("error", (e) => {
+      logError("arquivo", e);
+      res.destroy();
+    });
+    stream.pipe(res);
+  } catch (e) {
+    logError("http", e);
+    if (!res.headersSent) res.writeHead(500);
     res.end();
-    return;
   }
-  if (!fs2.existsSync(file) || fs2.statSync(file).isDirectory()) file = path2.join(root2, "index.html");
-  res.writeHead(200, { "content-type": types[path2.extname(file)] ?? "application/octet-stream", "cache-control": "no-cache" });
-  fs2.createReadStream(file).pipe(res);
 });
+server.on("clientError", (_e, socket) => {
+  if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+  else socket.destroy();
+});
+server.keepAliveTimeout = 65e3;
+server.headersTimeout = 66e3;
 var ws = attachWebSocket(server, { path: "/ws", maxMessageBytes: MAX_MESSAGE_BYTES }, (conn) => {
   const s = game.connect(conn);
-  conn.onmessage = (text) => game.message(s, text);
-  conn.onclose = () => game.disconnect(s);
+  conn.onmessage = (text) => {
+    try {
+      game.message(s, text);
+    } catch (e) {
+      logError("mensagem", e);
+    }
+  };
+  conn.onclose = () => {
+    try {
+      game.disconnect(s);
+    } catch (e) {
+      logError("desconex\xE3o", e);
+    }
+  };
 });
-var loop = setInterval(() => game.update(), TICK_MS);
-server.listen(port, () => console.log(`Ascension Infinite \xB7 servidor oficial em http://localhost:${port} (WebSocket /ws)`));
+var loop = setInterval(() => {
+  try {
+    game.update();
+  } catch (e) {
+    logError("la\xE7o do jogo", e);
+  }
+}, TICK_MS);
+var host = process.env.HOST ?? "0.0.0.0";
+server.on("error", (e) => {
+  console.error(`[erro] n\xE3o foi poss\xEDvel abrir a porta ${port}:`, e.message);
+  process.exit(1);
+});
+server.listen(port, host, () => {
+  console.log(`Ascension Infinite \xB7 servidor oficial em http://${host}:${port} (WebSocket /ws)`);
+  console.log(`Node ${process.version} \xB7 jogo em ${root2} \xB7 dados em ${path2.resolve(process.env.DATA_DIR ?? "data")} \xB7 IAs: ${game.bots ? game.bots.bots.length : 0} \xB7 saves locais: ${process.env.TRUST_LOCAL_SAVES === "0" ? "modo estrito" : "aceitos"}${process.env.SAVE_SECRET ? "" : " \xB7 aviso: sem SAVE_SECRET (assinaturas mudam a cada rein\xEDcio)"}`);
+});
+process.on("uncaughtException", (e) => logError("n\xE3o tratado", e));
+process.on("unhandledRejection", (e) => logError("promessa", e));
 var stopping = false;
 var stop = () => {
   if (stopping) return;
   stopping = true;
   clearInterval(loop);
-  game.shutdown();
+  try {
+    game.shutdown();
+  } catch (e) {
+    logError("encerramento", e);
+  }
   ws.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();
 };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
+export {
+  logError
+};
