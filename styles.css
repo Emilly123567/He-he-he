@@ -667,3 +667,21 @@ button.slot { font: inherit; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat-toggle { display: grid; place-items: center; position: fixed; right: calc(0.6rem + env(safe-area-inset-right)); top: calc(9.4rem + env(safe-area-inset-top)); width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 1px solid var(--line); background: rgba(12, 9, 34, 0.62); font-size: 1rem; z-index: 5; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat.open .chat-form { position: fixed; left: 0.5rem; right: 0.5rem; top: calc(0.5rem + env(safe-area-inset-top)); z-index: 40; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat-input { font-size: 16px; }
+
+/* ===================== Conta de teste / administrador ===================== */
+.credit-test { display: flex; justify-content: flex-end; margin: -0.35rem 0 0.4rem; }
+.test-account-btn { font-size: 0.78rem; padding: 0.35rem 0.8rem; border-style: dashed; }
+.admin { display: flex; flex-direction: column; gap: 0.9rem; max-width: 40rem; }
+.admin-note { margin: 0; padding: 0.55rem 0.8rem; border-radius: 10px; background: rgba(255, 209, 102, 0.1); border: 1px solid rgba(255, 209, 102, 0.35); color: var(--gold); font-size: 0.82rem; }
+.admin-sec { display: flex; flex-direction: column; gap: 0.45rem; padding: 0.7rem 0.8rem; border-radius: 12px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
+.admin-sec h3 { margin: 0 0 0.2rem; font-size: 0.92rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-2); }
+.admin-row, .admin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.admin-label { min-width: 7.5rem; font-size: 0.84rem; color: rgba(255, 255, 255, 0.78); }
+.admin-input { flex: 1; min-width: 7rem; padding: 0.42rem 0.6rem; border-radius: 9px; border: 1px solid var(--line); background: rgba(6, 4, 22, 0.75); color: #fff; font: inherit; font-size: 0.88rem; }
+.admin-input.small { flex: 0 0 4.5rem; min-width: 0; }
+.admin select.admin-input { min-width: 12rem; }
+.admin .menu-btn.small { padding: 0.38rem 0.7rem; font-size: 0.8rem; }
+.admin .danger { color: #ff8fa3; border-color: rgba(255, 122, 148, 0.5); }
+.admin-label { flex-shrink: 0; }
+@media (max-width: 560px) { .admin-label { min-width: 100%; } }
+.ac-tag.test { background: rgba(255, 209, 102, 0.18); color: var(--gold); }

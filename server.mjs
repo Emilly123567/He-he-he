@@ -1190,9 +1190,10 @@ var RESET_LAYERS = {
   multiplier: {
     id: "multiplier",
     displayName: "Multiplicador",
-    requirements: [{ resource: "letters", base: "100", growth: "1.75", costMode: "cumulative" }],
+    // revisão do autor: requisito cresce 68% por unidade (antes 75%); +0,85x de ganho de Letras por unidade (antes 0,5x)
+    requirements: [{ resource: "letters", base: "100", growth: "1.68", costMode: "cumulative" }],
     rewards: [
-      { channel: "letterGain", amountPerUnit: "0.5", stacking: add2 },
+      { channel: "letterGain", amountPerUnit: "0.85", stacking: add2 },
       { channel: "letterSpeed", amountPerUnit: "2", stacking: add2 },
       { channel: "xpGain", amountPerUnit: "0.5", stacking: add2 }
     ],
@@ -1204,8 +1205,8 @@ var RESET_LAYERS = {
   rank: {
     id: "rank",
     displayName: "Rank",
-    // requisito inicial 10 Multiplicadores (revisado pelo autor; antes 780 e 1e3). Crescimento e recompensas iguais.
-    requirements: [{ resource: "multiplier", base: "10", growth: "15", costMode: "cumulative" }],
+    // revisão do autor: 10 Multiplicadores, crescendo 1,7x (antes 15x), sempre inteiro: 10, 17, 29, 50, 84…
+    requirements: [{ resource: "multiplier", base: "10", growth: "1.7", costMode: "cumulative", integer: true }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "10", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "2", stacking: add2 }
@@ -1218,8 +1219,8 @@ var RESET_LAYERS = {
   rebirth: {
     id: "rebirth",
     displayName: "ReB",
-    // requisito inicial 5 000 Ranks (revisado pelo autor; antes 10 000). Crescimento e recompensas iguais.
-    requirements: [{ resource: "rank", base: "5e3", growth: "20", costMode: "cumulative" }],
+    // revisão do autor: 5 Ranks, crescendo 3x (antes 5 000 e 20x): 5, 15, 45, 135…
+    requirements: [{ resource: "rank", base: "5", growth: "3", costMode: "cumulative", integer: true }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "250", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "67", stacking: add2 },
@@ -1233,7 +1234,8 @@ var RESET_LAYERS = {
   ultraRebirth: {
     id: "ultraRebirth",
     displayName: "Ultra ReB",
-    requirements: [{ resource: "rebirth", base: "50", growth: "5", costMode: "cumulative" }],
+    // revisão do autor: 15 ReB, crescendo 2x (antes 50 e 5x): 15, 30, 60, 120…
+    requirements: [{ resource: "rebirth", base: "15", growth: "2", costMode: "cumulative", integer: true }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "30e3", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "2e3", stacking: add2 },
@@ -1248,7 +1250,8 @@ var RESET_LAYERS = {
   prestige: {
     id: "prestige",
     displayName: "Prest\xEDgio",
-    requirements: [{ resource: "ultraRebirth", base: "20", growth: "20", costMode: "cumulative" }],
+    // revisão do autor: crescimento 2x (antes 20x): 20, 40, 80, 160…
+    requirements: [{ resource: "ultraRebirth", base: "20", growth: "2", costMode: "cumulative", integer: true }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "780e3", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "278e3", stacking: add2 },
@@ -2892,6 +2895,7 @@ function planLayerPurchase(layerId, input) {
         ...bulk ? {} : { limit: 1 }
       }).purchases;
     }
+    if (req.integer && !req.growthRange) reqPurchases = fitIntegerPurchases(req, ownedIndex, u, layer.costIndex, input.stats[req.resource] ?? NumberEngine.ZERO, reqPurchases);
     purchases = purchases === null ? reqPurchases : NumberEngine.min(purchases, reqPurchases);
   }
   const p = purchases ?? NumberEngine.ZERO;
@@ -2905,7 +2909,7 @@ function planLayerPurchase(layerId, input) {
     costs: layer.requirements.map((req) => ({
       resource: req.resource,
       mode: req.costMode,
-      amount: req.growthRange ? costForRandom(req.base, req.growthRange, ownedIndex, NumberEngine.toNumber(p), layer.costIndex === "units" ? uNum : 1, req.costMode) : costFor({ base: requirementAt(curveOf(req), ownedIndex), growth: perPurchaseGrowth(req) }, 0, p, req.costMode)
+      amount: req.growthRange ? costForRandom(req.base, req.growthRange, ownedIndex, NumberEngine.toNumber(p), layer.costIndex === "units" ? uNum : 1, req.costMode) : req.integer ? integerCost(req, ownedIndex, u, layer.costIndex, p) : costFor({ base: requirementAt(curveOf(req), ownedIndex), growth: perPurchaseGrowth(req) }, 0, p, req.costMode)
     })),
     nextRequirements: layer.requirements.map((req) => ({
       resource: req.resource,
@@ -2913,8 +2917,33 @@ function planLayerPurchase(layerId, input) {
     }))
   };
 }
+var INTEGER_EXACT_LIMIT = 2e3;
+function integerTerm(req, index) {
+  return NumberEngine.ceil(requirementAt(curveOf(req), index));
+}
+function integerCost(req, ownedIndex, u, costIndex, purchases) {
+  const p = NumberEngine.toNumber(purchases);
+  const step = costIndex === "units" ? u : NumberEngine.ONE;
+  if (!(p > 0)) return NumberEngine.ZERO;
+  if (p > INTEGER_EXACT_LIMIT) {
+    return costFor({ base: requirementAt(curveOf(req), ownedIndex), growth: NumberEngine.pow(req.growth, step) }, 0, purchases, req.costMode);
+  }
+  if (req.costMode !== "cumulative") return integerTerm(req, NumberEngine.add(ownedIndex, NumberEngine.multiply(step, p - 1)));
+  let sum2 = NumberEngine.ZERO;
+  for (let k = 0; k < p; k++) sum2 = NumberEngine.add(sum2, integerTerm(req, NumberEngine.add(ownedIndex, NumberEngine.multiply(step, k))));
+  return sum2;
+}
+function fitIntegerPurchases(req, ownedIndex, u, costIndex, budget, n) {
+  let p = n;
+  for (let i = 0; i < 64 && NumberEngine.gt(p, 0) && NumberEngine.lte(p, INTEGER_EXACT_LIMIT); i++) {
+    if (NumberEngine.lte(integerCost(req, ownedIndex, u, costIndex, p), budget)) return p;
+    p = NumberEngine.subtract(p, 1);
+  }
+  return p;
+}
 function requirementOf(req, index) {
-  return req.growthRange ? requirementAtRandom(req.base, req.growthRange, index) : requirementAt(curveOf(req), index);
+  if (req.growthRange) return requirementAtRandom(req.base, req.growthRange, index);
+  return req.integer ? integerTerm(req, index) : requirementAt(curveOf(req), index);
 }
 function levelXpRequirement(levelUps) {
   return requirementAt({ base: LEVEL_CONFIG.xpBase, growth: LEVEL_CONFIG.xpGrowth }, levelUps);
@@ -3767,6 +3796,29 @@ var BotWorld = class {
       }
     }
     return this.pending.length === 0;
+  }
+  /**
+   * Conta de teste (offline): faz as IAs viverem `seconds` a mais, como se tivessem jogado
+   * esse tempo (desloca os relógios delas para trás e simula até agora).
+   */
+  fastForward(seconds, nowS, stepS = 20) {
+    const span = Math.max(0, Math.min(seconds, 7 * 24 * 3600));
+    for (const b of this.bots) {
+      b.lastSim -= span;
+      b.t0 -= span;
+      b.nextSwitch -= span;
+      if (b.deadUntil > 0) b.deadUntil -= span;
+      if (Number.isFinite(b.lastDecide)) b.lastDecide -= span;
+      for (let t = b.lastSim + stepS; t < nowS; t += stepS) this.simulate(b, t);
+      this.simulate(b, nowS);
+    }
+  }
+  /** Conta de teste (offline): aplica uma mudança direta ao progresso de todas as IAs. */
+  adjustAll(fn) {
+    for (const b of this.bots) {
+      b.state = fn(b.state);
+      b.hp = null;
+    }
   }
   /** Atualiza as IAs cujo intervalo venceu (no máximo `batch`). Retorna as atualizadas. */
   update(nowS) {
