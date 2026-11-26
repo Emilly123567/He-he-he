@@ -1166,9 +1166,9 @@ var LEVEL_EFFECTS = {
   /** additive: 1 + n·p · compound: (1 + p)^n */
   allGainMode: "additive",
   letterCycleReductionSeconds: 0.2,
-  letterCycleReductionPerLevel: 0.1,
-  /** O ciclo nunca fica abaixo disto (o mesmo passo de 0,2 s). [PROPOSTO] */
-  minLetterCycleSeconds: 0.2
+  letterCycleReductionPerLevel: 0.01,
+  /** O ciclo nunca fica abaixo disto (pedido do autor: 1,5 s). */
+  minLetterCycleSeconds: 1.5
 };
 var LETTERS_CONFIG = {
   cycleSeconds: 20,
@@ -1204,8 +1204,8 @@ var RESET_LAYERS = {
   rank: {
     id: "rank",
     displayName: "Rank",
-    // requisito inicial 780 Multiplicadores (revisado pelo autor; antes 1e3). Crescimento e recompensas iguais.
-    requirements: [{ resource: "multiplier", base: "780", growth: "15", costMode: "cumulative" }],
+    // requisito inicial 10 Multiplicadores (revisado pelo autor; antes 780 e 1e3). Crescimento e recompensas iguais.
+    requirements: [{ resource: "multiplier", base: "10", growth: "15", costMode: "cumulative" }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "10", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "2", stacking: add2 }
@@ -1218,7 +1218,8 @@ var RESET_LAYERS = {
   rebirth: {
     id: "rebirth",
     displayName: "ReB",
-    requirements: [{ resource: "rank", base: "10e3", growth: "20", costMode: "cumulative" }],
+    // requisito inicial 5 000 Ranks (revisado pelo autor; antes 10 000). Crescimento e recompensas iguais.
+    requirements: [{ resource: "rank", base: "5e3", growth: "20", costMode: "cumulative" }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "250", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "67", stacking: add2 },
@@ -1309,9 +1310,11 @@ var STAIRCASE_CONFIG = {
    * [ESPEC do autor] XP da escada:
    *  - o 1º degrau dá 5 XP a cada 100 ms;
    *  - cada degrau do lance soma 75% do valor do 1º degrau do lance;
-   *  - após cada pedestal, o 1º degrau do próximo lance vale 1,5x o 1º degrau do lance anterior,
-   *    e a mesma lógica recomeça.
-   * O 2,5x por lance NÃO afeta o XP: só o peso do Miasma.
+   *  - após cada pedestal, o 1º degrau do próximo lance vale 1,5x o ÚLTIMO degrau do lance
+   *    anterior (revisão do autor: antes era 1,5x o 1º degrau, o que fazia o XP CAIR ao passar
+   *    do pedestal e prendia os jogadores), e a mesma lógica recomeça.
+   *    Resultado: o XP nunca diminui subindo a escada.
+   * O 2,5x por lance NÃO afeta o XP: só o peso do Miasma (resistência exigida 2,5x maior a cada pedestal).
    */
   stepXpBase: "5",
   stepXpIntervalSeconds: 0.1,
@@ -1694,7 +1697,7 @@ function normalizeInventory(raw) {
 }
 
 // src/core/GameState.ts
-var SAVE_SCHEMA_VERSION = 4;
+var SAVE_SCHEMA_VERSION = 5;
 var PROGRESSION_STATS = [
   "level",
   "xp",
@@ -1721,6 +1724,8 @@ function createInitialProgress() {
     polarity: 1,
     automation: {},
     letterTimer: 0,
+    dropTimer: 0,
+    dropRolls: 0,
     inventory: starterInventory()
   };
 }
@@ -1761,6 +1766,8 @@ function toSerialized(s) {
     polarity: s.polarity,
     automation: { ...s.automation },
     letterTimer: s.letterTimer,
+    dropTimer: s.dropTimer,
+    dropRolls: s.dropRolls,
     inventory: JSON.parse(JSON.stringify(s.inventory))
   };
 }
@@ -1784,7 +1791,9 @@ var migrations = {
   // v2 → v3: cronômetro do ciclo de Letras (Fase 4).
   2: (payload) => ({ ...payload, letterTimer: 0 }),
   // v3 → v4: inventário/build (Fase 6) — saves antigos recebem o kit inicial.
-  3: (payload) => ({ ...payload, inventory: starterInventory() })
+  3: (payload) => ({ ...payload, inventory: starterInventory() }),
+  // v4 → v5: relógio de drops (3 objetos a cada 2:30).
+  4: (payload) => ({ ...payload, dropTimer: 0, dropRolls: 0 })
 };
 function deserializeProgress(text) {
   let env;
@@ -1828,6 +1837,8 @@ function deserializeProgress(text) {
     polarity: p.polarity === -1 ? -1 : 1,
     automation: { ...p.automation ?? {} },
     letterTimer: typeof p.letterTimer === "number" && p.letterTimer >= 0 && p.letterTimer < 1e6 ? p.letterTimer : 0,
+    dropTimer: typeof p.dropTimer === "number" && p.dropTimer >= 0 && p.dropTimer < 1e6 ? p.dropTimer : 0,
+    dropRolls: Number.isSafeInteger(p.dropRolls) && p.dropRolls >= 0 ? p.dropRolls : 0,
     inventory: normalizeInventory(p.inventory)
   };
 }
@@ -2610,13 +2621,18 @@ function flightOf(step) {
 function difficultyOf(flight) {
   return NumberEngine.pow(C.difficultyGrowthPerFlight, flight);
 }
+function inFlightGrowth(j) {
+  return C.stepXpGrowthMode === "additive" ? NumberEngine.add(1, NumberEngine.multiply(C.stepXpGrowthPerStep, j)) : NumberEngine.pow(NumberEngine.add(1, C.stepXpGrowthPerStep), j);
+}
+var FLIGHT_XP_FACTOR = NumberEngine.multiply(C.flightXpMultiplier, inFlightGrowth(STEPS_PER_SEGMENT - 1));
+function flightFirstStepXp(flight) {
+  return NumberEngine.multiply(C.stepXpBase, NumberEngine.pow(FLIGHT_XP_FACTOR, flight));
+}
 function stepXp(step) {
   if (step <= 0) return NumberEngine.ZERO;
   const flight = flightOf(step);
   const j = (step - 1) % STEPS_PER_SEGMENT;
-  const flightBase = NumberEngine.multiply(C.stepXpBase, NumberEngine.pow(C.flightXpMultiplier, flight));
-  const growth = C.stepXpGrowthMode === "additive" ? NumberEngine.add(1, NumberEngine.multiply(C.stepXpGrowthPerStep, j)) : NumberEngine.pow(NumberEngine.add(1, C.stepXpGrowthPerStep), j);
-  return NumberEngine.multiply(flightBase, growth);
+  return NumberEngine.multiply(flightFirstStepXp(flight), inFlightGrowth(j));
 }
 function stepProps(step) {
   const flight = flightOf(step);
@@ -2952,26 +2968,25 @@ function setAutomation(state, layer, enabled) {
 }
 
 // src/inventory/DropSystem.ts
-var STEP_DROP_CHANCE = 0.06;
 var CARD_SHARE = 0.25;
-function dropChanceAt(flight) {
-  return Math.min(0.14, STEP_DROP_CHANCE + 4e-3 * flight);
-}
+var TIMED_DROP_INTERVAL_SECONDS = 150;
+var TIMED_DROP_COUNT = 3;
 function cardShareAt(flight) {
   return Math.min(0.65, CARD_SHARE + 0.02 * flight);
 }
 function minTierAt(flight) {
   return Math.min(8, Math.floor(flight / 4));
 }
-function dropForStep(step) {
-  if (step <= 0) return null;
-  const flight = flightOf(step);
-  if (variation(step, 101) >= dropChanceAt(flight)) return null;
-  const isCard = variation(step, 103) < cardShareAt(flight);
-  const r = pickRarity(isCard ? "card" : "item", flight, variation(step, 107), minTierAt(flight));
+function dropForRoll(roll, flight) {
+  const f = Math.max(0, Math.floor(flight));
+  const isCard = variation(roll, 403) < cardShareAt(f);
+  const r = pickRarity(isCard ? "card" : "item", f, variation(roll, 407), minTierAt(f));
   const pool = isCard ? CARD_TEMPLATES : CONSUMABLE_TEMPLATES;
-  const t = pool[Math.floor(variation(step, 109) * pool.length)];
+  const t = pool[Math.floor(variation(roll, 409) * pool.length)];
   return `${isCard ? "carta" : "item"}:${t}:${r.id}`;
+}
+function dropFlightOf(step) {
+  return step > 0 ? flightOf(step) : 0;
 }
 function dropForPedestal(k) {
   const minTier = Math.min(8, Math.floor((k - 1) / 2));
@@ -2981,24 +2996,10 @@ function dropForPedestal(k) {
 }
 
 // src/world/PedestalTracker.ts
-var MAX_DROP_SCAN = 400;
 function applyClimb(state, step, onPlatformOf) {
   const events = [];
   let next = state;
-  if (NumberEngine.gt(step, next.highestStep)) {
-    const prev = NumberEngine.toNumber(next.highestStep);
-    let inv = next.inventory;
-    if (inv && Number.isFinite(prev)) {
-      for (let k = Math.max(prev + 1, step - MAX_DROP_SCAN + 1); k <= step; k++) {
-        const id = dropForStep(k);
-        if (id) {
-          inv = addObject(inv, id);
-          events.push({ kind: "drop", step: k, id });
-        }
-      }
-    }
-    next = { ...next, highestStep: NumberEngine.from(step), ...inv ? { inventory: inv } : {} };
-  }
+  if (NumberEngine.gt(step, next.highestStep)) next = { ...next, highestStep: NumberEngine.from(step) };
   const reached = onPlatformOf ?? Math.max(0, Math.floor((step - 1) / STEPS_PER_SEGMENT));
   const passed = NumberEngine.toNumber(next.pedestalsPassed);
   if (reached > passed) {
@@ -3211,6 +3212,25 @@ function tick(state, dt, ctx, automationClock = { t: 0 }) {
     events.push({ kind: "letters", amount, cycles });
   }
   s = { ...s, letterTimer: timer };
+  let dropTimer = (s.dropTimer ?? 0) + safeDt;
+  if (dropTimer >= TIMED_DROP_INTERVAL_SECONDS && s.inventory) {
+    const waves = Math.floor(dropTimer / TIMED_DROP_INTERVAL_SECONDS);
+    dropTimer -= waves * TIMED_DROP_INTERVAL_SECONDS;
+    const flight = dropFlightOf(ctx.onStair ? ctx.step : 0);
+    let inv = s.inventory;
+    let roll = s.dropRolls ?? 0;
+    const ids = [];
+    for (let w = 0; w < Math.min(waves, 10); w++) {
+      for (let i = 0; i < TIMED_DROP_COUNT; i++) {
+        const id = dropForRoll(roll++, flight);
+        inv = addObject(inv, id);
+        ids.push(id);
+      }
+    }
+    s = { ...s, inventory: inv, dropRolls: roll };
+    events.push({ kind: "loot", ids });
+  }
+  s = { ...s, dropTimer };
   const rate = ctx.onStair ? xpRate(s, effects, ctx.step, ctx.moving) : NumberEngine.ZERO;
   if (!NumberEngine.isZero(rate)) {
     s = { ...s, stats: { ...s.stats, xp: NumberEngine.add(s.stats.xp, NumberEngine.multiply(rate, safeDt)) } };
@@ -3237,7 +3257,7 @@ function tick(state, dt, ctx, automationClock = { t: 0 }) {
     if (expiredIds.length) events.push({ kind: "buffExpired", ids: expiredIds });
   }
   if (s !== state) effects = computeEffects(s, ctx.sources, ctx.now);
-  return { state: s, events, effects, rates: { xpPerSecond: ctx.onStair ? xpRate(s, effects, ctx.step, ctx.moving) : NumberEngine.ZERO, lettersPerCycle: lettersPerCycleOf(s, effects), cycleSeconds: letterCycleSeconds(s.stats.level) } };
+  return { state: s, events, effects, rates: { xpPerSecond: ctx.onStair ? xpRate(s, effects, ctx.step, ctx.moving) : NumberEngine.ZERO, lettersPerCycle: lettersPerCycleOf(s, effects), cycleSeconds: letterCycleSeconds(s.stats.level), nextDropSeconds: TIMED_DROP_INTERVAL_SECONDS - dropTimer } };
 }
 
 // src/progression/PlayerVitals.ts

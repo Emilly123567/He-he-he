@@ -197,6 +197,8 @@ input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border-radius
 .stat-label { color: var(--muted); }
 .stat-value { font-weight: 800; }
 .stat-row.letters .stat-value { color: var(--gold); }
+.stat-row.drop .stat-value { color: #b8f2a6; font-variant-numeric: tabular-nums; }
+.stat-row.drop .stat-label { color: rgba(255, 255, 255, 0.72); }
 .stat-row.negative .stat-value { color: var(--danger); }
 .hud-vitals { right: 0.9rem; top: 0.9rem; width: 15rem; padding: 0.65rem 0.85rem; }
 .vital { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; font-size: 0.82rem; margin-bottom: 0.45rem; }
@@ -331,6 +333,8 @@ input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border-radius
   .hud[data-layout="mobile"] { font-size: 0.78rem; }
   .hud[data-layout="mobile"] .hud-stats { top: calc(5.6rem + env(safe-area-inset-top)); }
   .touch-shortcuts { top: calc(0.5rem + env(safe-area-inset-top)); right: 50%; transform: translateX(50%); flex-direction: row; }
+  /* celular deitado: o selo online desce para baixo dos atalhos (não cobre os botões) */
+  .screen.game:has(.hud[data-layout="mobile"]) .net-badge { top: calc(3.4rem + env(safe-area-inset-top)); }
   .touch-btn.jump { bottom: calc(1.2rem + env(safe-area-inset-bottom)); }
   .touch-btn.interact { bottom: calc(0.6rem + env(safe-area-inset-bottom)); }
   .touch-btn.sprint { bottom: calc(7.2rem * var(--touch-size) + env(safe-area-inset-bottom)); }
@@ -660,6 +664,6 @@ button.slot { font: inherit; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat { left: 0.6rem; bottom: auto; top: calc(9.8rem + env(safe-area-inset-top)); width: min(17rem, 60vw); }
 .screen.game:has(.hud[data-layout="mobile"]) .chat-log { max-height: 6.4rem; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat-line { font-size: 0.74rem; }
-.screen.game:has(.hud[data-layout="mobile"]) .chat-toggle { display: grid; place-items: center; position: fixed; right: 0.7rem; top: calc(48% + env(safe-area-inset-top)); width: 2.8rem; height: 2.8rem; border-radius: 50%; border: 1px solid var(--line); background: rgba(12, 9, 34, 0.7); font-size: 1.2rem; }
+.screen.game:has(.hud[data-layout="mobile"]) .chat-toggle { display: grid; place-items: center; position: fixed; right: calc(0.6rem + env(safe-area-inset-right)); top: calc(9.4rem + env(safe-area-inset-top)); width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 1px solid var(--line); background: rgba(12, 9, 34, 0.62); font-size: 1rem; z-index: 5; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat.open .chat-form { position: fixed; left: 0.5rem; right: 0.5rem; top: calc(0.5rem + env(safe-area-inset-top)); z-index: 40; }
 .screen.game:has(.hud[data-layout="mobile"]) .chat-input { font-size: 16px; }
