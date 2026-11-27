@@ -1154,6 +1154,8 @@ var LEVEL_CONFIG = {
   levelStep: "0.01",
   xpBase: "100",
   xpGrowth: "1.25",
+  polySwitchAt: 11,
+  polyPower: 4.5,
   hpPerLevel: "0.25",
   hpStacking: "additive",
   resistancePerLevel: "0.03",
@@ -1162,6 +1164,10 @@ var LEVEL_CONFIG = {
   baseResistance: "1"
 };
 var LEVEL_EFFECTS = {
+  /** O bônus do nível também multiplica as unidades por compra das camadas. */
+  // revisão v1.0.5: o bônus vale para XP e Letras, mas NÃO multiplica as unidades das camadas
+  // (nas 6 camadas ao mesmo tempo ele se acumulava e levava o jogo do nível 1T ao infinito em ~6 min)
+  applyToUnits: false,
   allGainPercentPerLevel: "0.00000000001",
   /** additive: 1 + n·p · compound: (1 + p)^n */
   allGainMode: "additive",
@@ -1195,11 +1201,13 @@ var RESET_LAYERS = {
     rewards: [
       { channel: "letterGain", amountPerUnit: "0.85", stacking: add2 },
       { channel: "letterSpeed", amountPerUnit: "2", stacking: add2 },
-      { channel: "xpGain", amountPerUnit: "0.5", stacking: add2 }
+      // revisão v1.0.5: o bônus de XP do Multiplicador é elevado ao CUBO: (1 + 0,5·M)³
+      { channel: "xpGain", amountPerUnit: "0.5", stacking: add2, power: 3 }
     ],
     bulk: { enabledByDefault: false, unlockEffectId: "bulk:multiplier" },
     automation: { unlockEffectId: "auto:multiplier" },
-    costIndex: "units",
+    costIndex: "purchases",
+    // revisão v1.0.5: preço por compra (os bônus de ganho dão mais unidades pelo mesmo preço)
     display: "abbreviation"
   },
   rank: {
@@ -1209,11 +1217,14 @@ var RESET_LAYERS = {
     requirements: [{ resource: "multiplier", base: "10", growth: "1.7", costMode: "cumulative", integer: true }],
     rewards: [
       { channel: "letterGain", amountPerUnit: "10", stacking: add2 },
-      { channel: "multiplierGain", amountPerUnit: "2", stacking: add2 }
+      // revisão v1.0.5: cada COMPRA de Rank multiplica o ganho de Multiplicadores por 1,6 — um pouco abaixo dos 1,7x
+      // do preço do Rank: comprar só Ranks para sempre não vira bola de neve (é preciso avançar para o ReB)
+      { channel: "multiplierGain", amountPerUnit: "0", stacking: add2, perPurchase: "1.6" }
     ],
     bulk: { enabledByDefault: false, unlockEffectId: "bulk:rank" },
     automation: { unlockEffectId: "auto:rank" },
-    costIndex: "units",
+    costIndex: "purchases",
+    // revisão v1.0.5: preço por compra (os bônus de ganho dão mais unidades pelo mesmo preço)
     display: "roman"
   },
   rebirth: {
@@ -1224,11 +1235,13 @@ var RESET_LAYERS = {
     rewards: [
       { channel: "letterGain", amountPerUnit: "250", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "67", stacking: add2 },
-      { channel: "rankGain", amountPerUnit: "5", stacking: add2 }
+      // revisão v1.0.5: cada compra de ReB multiplica o ganho de Ranks por 3 (= quanto o preço do ReB sobe)
+      { channel: "rankGain", amountPerUnit: "0", stacking: add2, perPurchase: "3" }
     ],
     bulk: { enabledByDefault: false, unlockEffectId: "bulk:rebirth" },
     automation: { unlockEffectId: "auto:rebirth" },
-    costIndex: "units",
+    costIndex: "purchases",
+    // revisão v1.0.5: preço por compra (os bônus de ganho dão mais unidades pelo mesmo preço)
     display: "abbreviation"
   },
   ultraRebirth: {
@@ -1240,11 +1253,13 @@ var RESET_LAYERS = {
       { channel: "letterGain", amountPerUnit: "30e3", stacking: add2 },
       { channel: "multiplierGain", amountPerUnit: "2e3", stacking: add2 },
       { channel: "rankGain", amountPerUnit: "670", stacking: add2 },
-      { channel: "rebirthGain", amountPerUnit: "2", stacking: add2 }
+      // revisão v1.0.5: cada compra de Ultra ReB multiplica o ganho de ReB por 2 (= quanto o preço do Ultra ReB sobe)
+      { channel: "rebirthGain", amountPerUnit: "0", stacking: add2, perPurchase: "2" }
     ],
     bulk: { enabledByDefault: true, unlockEffectId: "bulk:ultraRebirth" },
     automation: { unlockEffectId: "auto:ultraRebirth" },
-    costIndex: "units",
+    costIndex: "purchases",
+    // revisão v1.0.5: preço por compra (os bônus de ganho dão mais unidades pelo mesmo preço)
     display: "abbreviation"
   },
   prestige: {
@@ -1257,11 +1272,13 @@ var RESET_LAYERS = {
       { channel: "multiplierGain", amountPerUnit: "278e3", stacking: add2 },
       { channel: "rankGain", amountPerUnit: "125e3", stacking: add2 },
       { channel: "rebirthGain", amountPerUnit: "45", stacking: add2 },
-      { channel: "ultraRebirthGain", amountPerUnit: "2", stacking: add2 }
+      // revisão v1.0.5: cada compra de Prestígio multiplica o ganho de Ultra ReB por 2 (= quanto o preço do Prestígio sobe)
+      { channel: "ultraRebirthGain", amountPerUnit: "0", stacking: add2, perPurchase: "2" }
     ],
     bulk: { enabledByDefault: true, unlockEffectId: "bulk:prestige" },
     automation: { unlockEffectId: "auto:prestige" },
-    costIndex: "units",
+    costIndex: "purchases",
+    // revisão v1.0.5: preço por compra (os bônus de ganho dão mais unidades pelo mesmo preço)
     display: "abbreviation"
   },
   ultraPrestige: {
@@ -1280,11 +1297,15 @@ var RESET_LAYERS = {
       { channel: "multiplierGain", amountPerUnit: "967e3", stacking: add2 },
       { channel: "rankGain", amountPerUnit: "634e3", stacking: add2 },
       { channel: "rebirthGain", amountPerUnit: "1.5e3", stacking: add2 },
-      { channel: "ultraRebirthGain", amountPerUnit: "15", stacking: add2 }
+      { channel: "ultraRebirthGain", amountPerUnit: "15", stacking: add2 },
+      // revisão v1.0.5: cada compra de Ultra Prestígio multiplica o ganho de Prestígio por 8 (64 após o 1º, pelo ²),
+      // um pouco abaixo dos 70–95x do preço: cada Ultra Prestígio fica um pouco mais difícil que o anterior
+      { channel: "prestigeGain", amountPerUnit: "0", stacking: add2, perPurchase: "8" }
     ],
     bulk: { enabledByDefault: true, unlockEffectId: "bulk:ultraPrestige" },
     automation: { unlockEffectId: "auto:ultraPrestige" },
-    costIndex: "units",
+    costIndex: "purchases",
+    // revisão v1.0.5: preço por compra (os bônus de ganho dão mais unidades pelo mesmo preço)
     display: "abbreviation"
   }
 };
@@ -2876,7 +2897,7 @@ function planLayerPurchase(layerId, input) {
   const owned = input.stats[layerId] ?? NumberEngine.ZERO;
   const u = NumberEngine.from(input.unitsPerPurchase ?? 1);
   const bulk = !input.single && isBulkAllowed(layer, input.unlockedEffects ?? /* @__PURE__ */ new Set());
-  const ownedIndex = layer.costIndex === "units" ? owned : NumberEngine.ZERO;
+  const ownedIndex = costIndexOf(layerId, owned, u);
   const uNum = NumberEngine.toNumber(u);
   let purchases = null;
   for (const req of layer.requirements) {
@@ -2945,20 +2966,97 @@ function requirementOf(req, index) {
   if (req.growthRange) return requirementAtRandom(req.base, req.growthRange, index);
   return req.integer ? integerTerm(req, index) : requirementAt(curveOf(req), index);
 }
+var EXP_CURVE = () => ({ base: LEVEL_CONFIG.xpBase, growth: LEVEL_CONFIG.xpGrowth });
+function polyParams() {
+  const n0 = LEVEL_CONFIG.polySwitchAt;
+  const p = LEVEL_CONFIG.polyPower;
+  if (n0 === void 0 || p === void 0) return null;
+  const r0 = requirementAt(EXP_CURVE(), n0);
+  return { n0, p, k: NumberEngine.divide(r0, NumberEngine.multiply(NumberEngine.pow(n0 + 1, p), p + 1)) };
+}
+function polyCost(a, c, pp) {
+  const q = pp.p + 1;
+  const A2 = NumberEngine.add(a, 0.5);
+  const ratio = NumberEngine.divide(c, A2);
+  const base = NumberEngine.multiply(pp.k, NumberEngine.pow(A2, q));
+  if (NumberEngine.lt(ratio, 1e-9)) return NumberEngine.multiply(base, NumberEngine.multiply(ratio, q));
+  const x = NumberEngine.toNumber(ratio);
+  if (!Number.isFinite(x) || x > 1e12) return NumberEngine.subtract(NumberEngine.multiply(pp.k, NumberEngine.pow(NumberEngine.add(A2, c), q)), base);
+  return NumberEngine.multiply(base, Math.expm1(q * Math.log1p(x)));
+}
+function levelXpCost(levelUps, count2) {
+  const a = NumberEngine.from(levelUps);
+  const c = NumberEngine.from(count2);
+  if (!NumberEngine.isPositive(c)) return NumberEngine.ZERO;
+  const pp = polyParams();
+  if (!pp) return cumulativeCost(EXP_CURVE(), a, c);
+  const b = NumberEngine.add(a, c);
+  let total = NumberEngine.ZERO;
+  if (NumberEngine.lt(a, pp.n0)) total = NumberEngine.add(total, cumulativeCost(EXP_CURVE(), a, NumberEngine.subtract(NumberEngine.min(b, pp.n0), a)));
+  if (NumberEngine.gt(b, pp.n0)) {
+    if (NumberEngine.gte(a, pp.n0)) total = NumberEngine.add(total, polyCost(a, c, pp));
+    else total = NumberEngine.add(total, polyCost(pp.n0, NumberEngine.subtract(b, pp.n0), pp));
+  }
+  return total;
+}
 function levelXpRequirement(levelUps) {
-  return requirementAt({ base: LEVEL_CONFIG.xpBase, growth: LEVEL_CONFIG.xpGrowth }, levelUps);
+  return levelXpCost(levelUps, 1);
 }
 function levelUpsAffordable(levelUps, xp) {
-  return maxAffordable({ base: LEVEL_CONFIG.xpBase, growth: LEVEL_CONFIG.xpGrowth }, levelUps, xp, "cumulative");
+  try {
+    return levelUpsAffordableRaw(levelUps, xp);
+  } catch {
+    return NumberEngine.ZERO;
+  }
+}
+function levelUpsAffordableRaw(levelUps, xp) {
+  const pp = polyParams();
+  if (!pp) return maxAffordable(EXP_CURVE(), levelUps, xp, "cumulative");
+  const a = NumberEngine.from(levelUps);
+  const budget = NumberEngine.abs(xp);
+  let bought = NumberEngine.ZERO;
+  let left = budget;
+  let at = a;
+  if (NumberEngine.lt(a, pp.n0)) {
+    const room = NumberEngine.subtract(pp.n0, a);
+    const e = NumberEngine.min(maxAffordable(EXP_CURVE(), a, budget, "cumulative"), room);
+    bought = e;
+    left = NumberEngine.subtract(budget, cumulativeCost(EXP_CURVE(), a, e));
+    at = NumberEngine.add(a, e);
+    if (NumberEngine.lt(e, room)) return bought;
+  }
+  const q = pp.p + 1;
+  const A2 = NumberEngine.add(at, 0.5);
+  const r = NumberEngine.divide(left, NumberEngine.multiply(pp.k, NumberEngine.pow(A2, q)));
+  const rn = NumberEngine.toNumber(r);
+  let c;
+  if (NumberEngine.lt(r, 1e-9)) c = NumberEngine.floor(NumberEngine.divide(NumberEngine.multiply(A2, r), q));
+  else if (Number.isFinite(rn) && rn < 1e15) c = NumberEngine.floor(NumberEngine.multiply(A2, Math.expm1(Math.log1p(rn) / q)));
+  else {
+    const lb = NumberEngine.divide(NumberEngine.log10(NumberEngine.add(NumberEngine.divide(left, pp.k), NumberEngine.pow(A2, q))), q);
+    c = NumberEngine.floor(NumberEngine.max(0, NumberEngine.subtract(NumberEngine.exp10(lb), A2)));
+  }
+  if (NumberEngine.isNegative(c)) c = NumberEngine.ZERO;
+  for (let i = 0; i < 6 && NumberEngine.isPositive(c) && NumberEngine.gt(polyCost(at, c, pp), left); i++) c = NumberEngine.subtract(c, NumberEngine.max(1, NumberEngine.multiply(c, 1e-12)));
+  for (let i = 0; i < 6 && NumberEngine.lt(c, 9e15) && NumberEngine.lte(polyCost(at, NumberEngine.add(c, 1), pp), left); i++) c = NumberEngine.add(c, 1);
+  const b = NumberEngine.add(at, c);
+  return NumberEngine.add(bought, NumberEngine.subtract(b, at));
 }
 function lettersPerCycle(gainFactor, speedFactor, polarity = 1) {
   return NumberEngine.multiply(NumberEngine.multiply(NumberEngine.multiply(LETTERS_CONFIG.baseAmountPerCycle, gainFactor), speedFactor), polarity);
 }
-function calculateNextRequirement(type, owned) {
+function costIndexOf(layerId, owned, unitsPerPurchase = 1) {
+  const o = NumberEngine.from(owned);
+  if (RESET_LAYERS[layerId].costIndex === "units") return o;
+  const u = NumberEngine.max(1, NumberEngine.from(unitsPerPurchase));
+  const idx2 = NumberEngine.floor(NumberEngine.divide(NumberEngine.abs(o), u));
+  return NumberEngine.isNegative(o) ? NumberEngine.negate(idx2) : idx2;
+}
+function calculateNextRequirement(type, owned, unitsPerPurchase = 1) {
   if (type === "level") return levelXpRequirement(owned);
   const req = RESET_LAYERS[type].requirements[0];
   if (!req) throw new MathError("INVALID_CONFIG", `camada ${type} sem requisitos`);
-  return requirementOf(req, owned);
+  return requirementOf(req, costIndexOf(type, owned, unitsPerPurchase));
 }
 var ProgressionCalculator = {
   requirementAt,
@@ -2972,8 +3070,136 @@ var ProgressionCalculator = {
   isBulkAllowed,
   levelXpRequirement,
   levelUpsAffordable,
+  levelXpCost,
+  costIndexOf,
   calculateNextRequirement,
   lettersPerCycle
+};
+
+// src/progression/EffectEngine.ts
+var EFFECT_ORDER = ["base", "layers", "letters", "level", "additivePercent", "penalties", "reverse"];
+var LEVEL_GAIN_CHANNELS = [
+  "xpGain",
+  "letterGain",
+  "multiplierGain",
+  "rankGain",
+  "rebirthGain",
+  "ultraRebirthGain",
+  "prestigeGain",
+  "ultraPrestigeGain"
+];
+function levelGainFactor(level) {
+  const n = NumberEngine.abs(level);
+  const p = NumberEngine.divide(LEVEL_EFFECTS.allGainPercentPerLevel, 100);
+  return LEVEL_EFFECTS.allGainMode === "compound" ? NumberEngine.pow(NumberEngine.add(1, p), n) : NumberEngine.add(1, NumberEngine.multiply(p, n));
+}
+function letterCycleSeconds(level) {
+  const base = LETTERS_CONFIG.cycleSeconds;
+  const lv = NumberEngine.toNumber(NumberEngine.min(NumberEngine.abs(level), 1e9));
+  const steps = Math.floor(lv / LEVEL_EFFECTS.letterCycleReductionPerLevel + 1e-9);
+  return Math.max(LEVEL_EFFECTS.minLetterCycleSeconds, base - steps * LEVEL_EFFECTS.letterCycleReductionSeconds);
+}
+var CHANNELS = [
+  "xpGain",
+  "letterGain",
+  "letterSpeed",
+  "multiplierGain",
+  "rankGain",
+  "rebirthGain",
+  "ultraRebirthGain",
+  "prestigeGain",
+  "ultraPrestigeGain",
+  "hp",
+  "resistance"
+];
+function letterXpFactor(letters) {
+  const L = NumberEngine.abs(letters);
+  const per = LETTERS_CONFIG.xpBonusPerLetter;
+  if (LETTERS_CONFIG.xpBonusFormula === "linear") return NumberEngine.add(1, NumberEngine.multiply(per, L));
+  return NumberEngine.add(1, NumberEngine.multiply(NumberEngine.multiply(per, NumberEngine.log10(NumberEngine.add(1, L))), LETTERS_CONFIG.xpBonusLogScale));
+}
+var PENALTY_FLOOR = 0.1;
+function computeEffects(state, sources = [], now = 0) {
+  const factors = {};
+  const breakdown = {};
+  for (const c of CHANNELS) {
+    factors[c] = NumberEngine.ONE;
+    breakdown[c] = [];
+  }
+  const all = state.inventory ? [...sources, ...buffSources(state.inventory)] : sources;
+  const live = all.filter((s) => s.expiresAt === void 0 || s.expiresAt > now);
+  for (const stage of EFFECT_ORDER) {
+    if (stage === "layers") {
+      const lvl = LEVEL_EFFECTS.applyToUnits ? levelGainFactor(state.stats.level) : NumberEngine.ONE;
+      const unitF = {};
+      for (const id of [...RESET_LAYER_ORDER].reverse()) {
+        const owned = NumberEngine.abs(state.stats[id]);
+        if (NumberEngine.isZero(owned)) continue;
+        const ch = UNITS_CHANNEL[id];
+        const u = NumberEngine.max(1, NumberEngine.floor(NumberEngine.multiply(unitF[ch] ?? NumberEngine.ONE, lvl)));
+        const purchases = NumberEngine.floor(NumberEngine.divide(owned, u));
+        const power2 = RESET_LAYERS[id].rewardPowerAfterFirst;
+        const squared = power2 !== void 0 && power2 !== 1 && NumberEngine.gte(owned, 1);
+        for (const r of RESET_LAYERS[id].rewards) {
+          const isUnitGain = UNIT_GAIN_CHANNELS.has(r.channel);
+          let f = CalculationEngine.stackFactor(r.stacking, r.amountPerUnit, isUnitGain ? purchases : owned);
+          if (r.perPurchase !== void 0) f = NumberEngine.multiply(f, NumberEngine.pow(r.perPurchase, purchases));
+          if (isUnitGain) {
+            const g = r.power !== void 0 && r.power !== 1 ? NumberEngine.pow(f, r.power) : f;
+            unitF[r.channel] = NumberEngine.multiply(unitF[r.channel] ?? NumberEngine.ONE, squared ? NumberEngine.pow(g, power2) : g);
+          }
+          if (r.power !== void 0 && r.power !== 1) f = NumberEngine.pow(f, r.power);
+          if (squared) f = NumberEngine.pow(f, power2);
+          const sup = r.power !== void 0 && r.power !== 1 ? r.power === 2 ? "\xB2" : r.power === 3 ? "\xB3" : `^${r.power}` : "";
+          factors[r.channel] = NumberEngine.multiply(factors[r.channel], f);
+          breakdown[r.channel].push({ stage, label: `${RESET_LAYERS[id].displayName}${sup ? ` (${sup})` : ""}${squared ? " (\xB2)" : ""}`, factor: f });
+        }
+      }
+    } else if (stage === "letters") {
+      const f = letterXpFactor(state.stats.letters);
+      if (NumberEngine.gt(f, 1)) {
+        factors.xpGain = NumberEngine.multiply(factors.xpGain, f);
+        breakdown.xpGain.push({ stage, label: "Letras", factor: f });
+      }
+    } else if (stage === "level") {
+      const f = levelGainFactor(state.stats.level);
+      if (NumberEngine.gt(f, 1)) {
+        for (const c of LEVEL_GAIN_CHANNELS) {
+          if (!LEVEL_EFFECTS.applyToUnits && c !== "xpGain" && c !== "letterGain") continue;
+          factors[c] = NumberEngine.multiply(factors[c], f);
+          breakdown[c].push({ stage, label: "N\xEDvel", factor: f });
+        }
+      }
+    } else if (stage === "additivePercent" || stage === "penalties") {
+      const kind = stage === "additivePercent" ? "percent" : "penalty";
+      for (const c of CHANNELS) {
+        const mine = live.filter((s) => s.channel === c && s.kind === kind);
+        if (!mine.length) continue;
+        const total = NumberEngine.sum(mine.map((s) => s.value));
+        const f = kind === "percent" ? NumberEngine.add(1, NumberEngine.divide(total, 100)) : NumberEngine.max(PENALTY_FLOOR, NumberEngine.subtract(1, NumberEngine.divide(total, 100)));
+        factors[c] = NumberEngine.multiply(factors[c], f);
+        breakdown[c].push({ stage, label: kind === "percent" ? `Buffs (+${NumberEngine.format(total)}%)` : `Penalidades (\u2212${NumberEngine.format(total)}%)`, factor: f });
+      }
+    } else if (stage === "reverse") {
+      for (const c of CHANNELS) {
+        const f = NegativeNumberEngine.applyReverseHooks(factors[c], { channel: c, source: "effects", negatedState: state.polarity === -1 });
+        if (!NumberEngine.equals(f, factors[c])) {
+          breakdown[c].push({ stage, label: "Efeitos reversos", factor: NumberEngine.divide(f, factors[c]) });
+          factors[c] = f;
+        }
+      }
+    }
+  }
+  return { factors, breakdown };
+}
+var UNIT_GAIN_CHANNELS = /* @__PURE__ */ new Set(["multiplierGain", "rankGain", "rebirthGain", "ultraRebirthGain", "prestigeGain", "ultraPrestigeGain"]);
+var UNITS_CHANNEL = {
+  multiplier: "multiplierGain",
+  rank: "rankGain",
+  rebirth: "rebirthGain",
+  ultraRebirth: "ultraRebirthGain",
+  prestige: "prestigeGain",
+  ultraPrestige: "ultraPrestigeGain"
 };
 
 // src/progression/PrestigeBook.ts
@@ -3054,116 +3280,6 @@ var RESET_TABLE = {
   ultraPrestige: ["letters", "multiplier", "rank", "rebirth", "ultraRebirth", "prestige"]
 };
 
-// src/progression/EffectEngine.ts
-var EFFECT_ORDER = ["base", "layers", "letters", "level", "additivePercent", "penalties", "reverse"];
-var LEVEL_GAIN_CHANNELS = [
-  "xpGain",
-  "letterGain",
-  "multiplierGain",
-  "rankGain",
-  "rebirthGain",
-  "ultraRebirthGain",
-  "prestigeGain",
-  "ultraPrestigeGain"
-];
-function levelGainFactor(level) {
-  const n = NumberEngine.abs(level);
-  const p = NumberEngine.divide(LEVEL_EFFECTS.allGainPercentPerLevel, 100);
-  return LEVEL_EFFECTS.allGainMode === "compound" ? NumberEngine.pow(NumberEngine.add(1, p), n) : NumberEngine.add(1, NumberEngine.multiply(p, n));
-}
-function letterCycleSeconds(level) {
-  const base = LETTERS_CONFIG.cycleSeconds;
-  const lv = NumberEngine.toNumber(NumberEngine.min(NumberEngine.abs(level), 1e9));
-  const steps = Math.floor(lv / LEVEL_EFFECTS.letterCycleReductionPerLevel + 1e-9);
-  return Math.max(LEVEL_EFFECTS.minLetterCycleSeconds, base - steps * LEVEL_EFFECTS.letterCycleReductionSeconds);
-}
-var CHANNELS = [
-  "xpGain",
-  "letterGain",
-  "letterSpeed",
-  "multiplierGain",
-  "rankGain",
-  "rebirthGain",
-  "ultraRebirthGain",
-  "prestigeGain",
-  "ultraPrestigeGain",
-  "hp",
-  "resistance"
-];
-function letterXpFactor(letters) {
-  const L = NumberEngine.abs(letters);
-  const per = LETTERS_CONFIG.xpBonusPerLetter;
-  if (LETTERS_CONFIG.xpBonusFormula === "linear") return NumberEngine.add(1, NumberEngine.multiply(per, L));
-  return NumberEngine.add(1, NumberEngine.multiply(NumberEngine.multiply(per, NumberEngine.log10(NumberEngine.add(1, L))), LETTERS_CONFIG.xpBonusLogScale));
-}
-function computeEffects(state, sources = [], now = 0) {
-  const factors = {};
-  const breakdown = {};
-  for (const c of CHANNELS) {
-    factors[c] = NumberEngine.ONE;
-    breakdown[c] = [];
-  }
-  const all = state.inventory ? [...sources, ...buffSources(state.inventory)] : sources;
-  const live = all.filter((s) => s.expiresAt === void 0 || s.expiresAt > now);
-  for (const stage of EFFECT_ORDER) {
-    if (stage === "layers") {
-      for (const id of RESET_LAYER_ORDER) {
-        const owned = NumberEngine.abs(state.stats[id]);
-        if (NumberEngine.isZero(owned)) continue;
-        const power2 = RESET_LAYERS[id].rewardPowerAfterFirst;
-        const squared = power2 !== void 0 && power2 !== 1 && NumberEngine.gte(owned, 1);
-        for (const r of RESET_LAYERS[id].rewards) {
-          let f = CalculationEngine.stackFactor(r.stacking, r.amountPerUnit, owned);
-          if (squared) f = NumberEngine.pow(f, power2);
-          factors[r.channel] = NumberEngine.multiply(factors[r.channel], f);
-          breakdown[r.channel].push({ stage, label: squared ? `${RESET_LAYERS[id].displayName} (\xB2)` : RESET_LAYERS[id].displayName, factor: f });
-        }
-      }
-    } else if (stage === "letters") {
-      const f = letterXpFactor(state.stats.letters);
-      if (NumberEngine.gt(f, 1)) {
-        factors.xpGain = NumberEngine.multiply(factors.xpGain, f);
-        breakdown.xpGain.push({ stage, label: "Letras", factor: f });
-      }
-    } else if (stage === "level") {
-      const f = levelGainFactor(state.stats.level);
-      if (NumberEngine.gt(f, 1)) {
-        for (const c of LEVEL_GAIN_CHANNELS) {
-          factors[c] = NumberEngine.multiply(factors[c], f);
-          breakdown[c].push({ stage, label: "N\xEDvel", factor: f });
-        }
-      }
-    } else if (stage === "additivePercent" || stage === "penalties") {
-      const kind = stage === "additivePercent" ? "percent" : "penalty";
-      for (const c of CHANNELS) {
-        const mine = live.filter((s) => s.channel === c && s.kind === kind);
-        if (!mine.length) continue;
-        const total = NumberEngine.sum(mine.map((s) => s.value));
-        const f = kind === "percent" ? NumberEngine.add(1, NumberEngine.divide(total, 100)) : NumberEngine.max(0, NumberEngine.subtract(1, NumberEngine.divide(total, 100)));
-        factors[c] = NumberEngine.multiply(factors[c], f);
-        breakdown[c].push({ stage, label: kind === "percent" ? `Buffs (+${NumberEngine.format(total)}%)` : `Penalidades (\u2212${NumberEngine.format(total)}%)`, factor: f });
-      }
-    } else if (stage === "reverse") {
-      for (const c of CHANNELS) {
-        const f = NegativeNumberEngine.applyReverseHooks(factors[c], { channel: c, source: "effects", negatedState: state.polarity === -1 });
-        if (!NumberEngine.equals(f, factors[c])) {
-          breakdown[c].push({ stage, label: "Efeitos reversos", factor: NumberEngine.divide(f, factors[c]) });
-          factors[c] = f;
-        }
-      }
-    }
-  }
-  return { factors, breakdown };
-}
-var UNITS_CHANNEL = {
-  multiplier: "multiplierGain",
-  rank: "rankGain",
-  rebirth: "rebirthGain",
-  ultraRebirth: "ultraRebirthGain",
-  prestige: "prestigeGain",
-  ultraPrestige: "ultraPrestigeGain"
-};
-
 // src/progression/ProgressionSystem.ts
 var MOVING_XP_BONUS = 1;
 var AUTOMATION_INTERVAL = 0.5;
@@ -3181,7 +3297,7 @@ function lettersPerCycleOf(state, effects) {
 function applyLevelUps(state) {
   const n = ProgressionCalculator.levelUpsAffordable(state.levelUps, NumberEngine.abs(state.stats.xp));
   if (NumberEngine.isZero(n)) return { state, gained: NumberEngine.ZERO };
-  const cost = ProgressionCalculator.cumulativeCost({ base: LEVEL_CONFIG.xpBase, growth: LEVEL_CONFIG.xpGrowth }, state.levelUps, n);
+  const cost = ProgressionCalculator.levelXpCost(state.levelUps, n);
   let xp = NumberEngine.subtract(NumberEngine.abs(state.stats.xp), cost);
   if (NumberEngine.isNegative(xp)) xp = NumberEngine.ZERO;
   const levelUps = NumberEngine.add(state.levelUps, n);
@@ -3331,7 +3447,8 @@ function survivalTick(hp, dt, ctx) {
     next = NumberEngine.add(hp, NumberEngine.multiply(reading.maxHp, NumberEngine.multiply(MIASMA_CONFIG.regenFractionPerSecond, safeDt)));
   }
   next = NumberEngine.min(next, reading.maxHp);
-  const dead = !NumberEngine.isPositive(next);
+  const dead = ctx.step > 0 && !NumberEngine.isPositive(next);
+  if (!dead && !NumberEngine.isPositive(next)) next = NumberEngine.max(reading.maxHp, 1);
   return { hp: dead ? NumberEngine.ZERO : next, reading, dead };
 }
 function applyMiasmaDeath(state) {
